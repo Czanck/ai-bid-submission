@@ -239,22 +239,18 @@ export function BidSubmissionModal({
               className="p-6"
             >
               <DialogHeader>
-                <DialogTitle className="text-xl">Submit Your Bid</DialogTitle>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Upload your bid documents for{" "}
-                  <span className="font-medium text-foreground">
-                    {projectName}
-                  </span>
-                </p>
+                <DialogTitle className="text-xl font-bold text-gray-900">
+                  Submit Bid
+                </DialogTitle>
               </DialogHeader>
 
-              <div className="mt-6">
+              <div className="mt-4">
                 {/* Drop zone */}
                 <div
-                  className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                  className={`relative border-2 border-dashed rounded-xl p-8 py-12 text-center transition-colors cursor-pointer ${
                     isDragging
-                      ? "border-primary bg-primary/5"
-                      : "border-muted-foreground/25 hover:border-muted-foreground/50"
+                      ? "border-emerald-400 bg-emerald-50"
+                      : "border-gray-300 bg-white hover:border-gray-400"
                   }`}
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -266,6 +262,7 @@ export function BidSubmissionModal({
                   }}
                   onDragLeave={() => setIsDragging(false)}
                   onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
                 >
                   <input
                     ref={fileInputRef}
@@ -278,21 +275,28 @@ export function BidSubmissionModal({
                       e.target.value = "";
                     }}
                   />
-                  <Upload className="mx-auto h-10 w-10 text-muted-foreground/50" />
-                  <p className="mt-3 text-sm font-medium">
-                    Drag and drop your bid files here
+                  <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-gray-100">
+                    <Upload className="h-7 w-7 text-gray-400" />
+                  </div>
+                  <p className="mt-4 text-lg font-semibold text-gray-800">
+                    Drop your bid files here
                   </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    PDF, PNG, or JPG up to 10MB each
+                  <p className="mt-1 text-sm text-gray-500">
+                    or click to browse from your computer
                   </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-4"
-                    onClick={() => fileInputRef.current?.click()}
+                  <button
+                    type="button"
+                    className="mt-4 rounded-lg bg-emerald-400 px-8 py-3 text-base font-semibold text-white transition-colors hover:bg-emerald-500"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
                   >
                     Browse Files
-                  </Button>
+                  </button>
+                  <p className="mt-4 text-sm text-gray-400">
+                    Supported formats: PDF, DOC, DOCX, XLS, XLSX, CSV
+                  </p>
                 </div>
 
                 {/* File list */}
