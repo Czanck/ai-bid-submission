@@ -190,12 +190,26 @@ export function BidSubmissionModal({
         body: formData,
       });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || `Analysis failed (${response.status})`);
+      // Safely parse the response — handle HTML error pages, timeouts, etc.
+      let data: Record<string, unknown>;
+      try {
+        const text = await response.text();
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(
+          response.status === 504
+            ? "Analysis timed out. Try uploading a smaller file."
+            : `Server error (${response.status}). Please try again.`
+        );
       }
 
-      const result: AnalyzeBidResponse = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          (data.error as string) || `Analysis failed (${response.status})`
+        );
+      }
+
+      const result = data as unknown as AnalyzeBidResponse;
       setAnalysisResult(result);
       setBidAmount(result.extractedData.bidAmount);
       setMessageBody(result.messageTemplate);
@@ -226,7 +240,7 @@ export function BidSubmissionModal({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
+      <DialogContent className="!max-w-[min(900px,calc(100vw-2rem))] w-full h-[80vh] overflow-y-auto overflow-x-hidden p-0">
         <AnimatePresence mode="wait">
           {/* ===== UPLOAD STEP ===== */}
           {step === "upload" && (
@@ -236,7 +250,7 @@ export function BidSubmissionModal({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
-              className="p-6"
+              className="p-6 overflow-x-hidden"
             >
               <DialogHeader>
                 <DialogTitle className="text-xl font-bold text-gray-900">
@@ -426,7 +440,7 @@ export function BidSubmissionModal({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
-              className="p-6"
+              className="p-6 overflow-x-hidden"
             >
               <DialogHeader>
                 <DialogTitle className="text-xl">Review & Submit</DialogTitle>

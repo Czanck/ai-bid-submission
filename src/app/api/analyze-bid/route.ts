@@ -1,24 +1,37 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { PDFParse } from "pdf-parse";
 import {
   getInstructionsPromptBlock,
   specialInstructions,
 } from "@/lib/special-instructions";
 import type { AnalyzeBidResponse, RequirementCheck } from "@/lib/types";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Increase body size limit for file uploads (Next.js App Router)
+export const runtime = "nodejs";
+export const maxDuration = 60; // seconds
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   try {
-    const parser = new PDFParse({ data: new Uint8Array(buffer) });
-    const result = await parser.getText();
-    return result.text;
-  } catch {
+    // Use pdfjs-dist legacy CJS build — works reliably in Node.js / Next.js serverless
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
+    const data = new Uint8Array(buffer);
+    const doc = await pdfjsLib.getDocument({ data, disableFontFace: true }).promise;
+
+    let fullText = "";
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items
+        .map((item: { str: string }) => item.str)
+        .join(" ");
+      fullText += pageText + "\n";
+    }
+    return fullText;
+  } catch (err) {
+    console.error("PDF parse error:", err);
     return "";
   }
 }
@@ -38,12 +51,15 @@ function buildImageContent(
 
 export async function POST(request: Request) {
   try {
-    if (!process.env.OPENAI_API_KEY) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
       return NextResponse.json(
-        { error: "OpenAI API key not configured" },
+        { error: "OpenAI API key not configured. Please set OPENAI_API_KEY environment variable." },
         { status: 500 }
       );
     }
+
+    const openai = new OpenAI({ apiKey });
 
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
@@ -240,11 +256,27 @@ ${getInstructionsPromptBlock()}
     return NextResponse.json(result);
   } catch (error) {
     console.error("Analyze bid error:", error);
-    const message =
-      error instanceof Error ? error.message : "Unknown error occurred";
+
+    // Surface helpful error messages
+    let message = "Unknown error occurred";
+    let status = 502;
+
+    if (error instanceof OpenAI.AuthenticationError) {
+      message = "Invalid OpenAI API key. Please check your OPENAI_API_KEY environment variable.";
+      status = 401;
+    } else if (error instanceof OpenAI.RateLimitError) {
+      message = "OpenAI rate limit reached. Please try again in a moment.";
+      status = 429;
+    } else if (error instanceof OpenAI.APIError) {
+      message = `OpenAI API error: ${error.message}`;
+      status = 502;
+    } else if (error instanceof Error) {
+      message = error.message;
+    }
+
     return NextResponse.json(
       { error: `Analysis failed: ${message}` },
-      { status: 502 }
+      { status }
     );
   }
 }
