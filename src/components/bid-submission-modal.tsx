@@ -509,12 +509,6 @@ export function BidSubmissionModal({
             >
               <DialogHeader>
                 <DialogTitle className="text-xl">Review & Submit</DialogTitle>
-                <p className="text-sm text-muted-foreground mt-1">
-                  AI has analyzed your bid for{" "}
-                  <span className="font-medium text-foreground">
-                    {projectName}
-                  </span>
-                </p>
               </DialogHeader>
 
               <div className="mt-6 space-y-5">
