@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { EnvelopeAnimation } from "./envelope-animation";
 import type {
   ModalStep,
   UploadedFile,
@@ -46,24 +47,24 @@ interface BidSubmissionModalProps {
 
 const statusConfig: Record<
   RequirementStatus,
-  { icon: typeof CheckCircle2; color: string; badgeVariant: string; label: string }
+  { icon: typeof CheckCircle2; color: string; badgeVariant: "success" | "destructive" | "warning"; label: string }
 > = {
   found: {
     icon: CheckCircle2,
-    color: "text-green-600",
-    badgeVariant: "bg-green-100 text-green-800 border-green-200",
+    color: "text-success-foreground",
+    badgeVariant: "success",
     label: "Found",
   },
   missing: {
     icon: XCircle,
-    color: "text-red-500",
-    badgeVariant: "bg-red-100 text-red-800 border-red-200",
+    color: "text-destructive",
+    badgeVariant: "destructive",
     label: "Missing",
   },
   "needs-action": {
     icon: AlertTriangle,
-    color: "text-amber-500",
-    badgeVariant: "bg-amber-100 text-amber-800 border-amber-200",
+    color: "text-warning-foreground",
+    badgeVariant: "warning",
     label: "Action Needed",
   },
 };
@@ -101,9 +102,12 @@ export function BidSubmissionModal({
   const [messageBody, setMessageBody] = useState("");
   const [isEmailConnected, setIsEmailConnected] = useState(false);
   const [isConnectingEmail, setIsConnectingEmail] = useState(false);
-  const [shareWithGCs, setShareWithGCs] = useState(false);
+  const [shareWithGCs, setShareWithGCs] = useState(true);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const modalContentRef = useRef<HTMLDivElement>(null);
+  const [showEnvelopeAnimation, setShowEnvelopeAnimation] = useState(false);
+  const [modalRect, setModalRect] = useState<DOMRect | null>(null);
 
   // Cycle processing messages
   useEffect(() => {
@@ -117,6 +121,8 @@ export function BidSubmissionModal({
   // Reset state when modal closes
   const handleOpenChange = useCallback(
     (newOpen: boolean) => {
+      // Prevent closing during envelope animation
+      if (!newOpen && showEnvelopeAnimation) return;
       if (!newOpen) {
         setTimeout(() => {
           setStep("upload");
@@ -128,11 +134,13 @@ export function BidSubmissionModal({
           setIsEmailConnected(false);
           setShareWithGCs(false);
           setProcessingMsgIndex(0);
+          setShowEnvelopeAnimation(false);
+          setModalRect(null);
         }, 300);
       }
       onOpenChange(newOpen);
     },
-    [onOpenChange]
+    [onOpenChange, showEnvelopeAnimation]
   );
 
   const addFiles = useCallback((newFiles: FileList | File[]) => {
@@ -232,15 +240,62 @@ export function BidSubmissionModal({
   }, []);
 
   const handleSubmit = useCallback(() => {
+    // Capture modal rect before starting animation
+    if (modalContentRef.current) {
+      setModalRect(modalContentRef.current.getBoundingClientRect());
+    }
+    setShowEnvelopeAnimation(true);
+  }, []);
+
+  const handleEnvelopeComplete = useCallback(() => {
+    setShowEnvelopeAnimation(false);
+    setModalRect(null);
     setStep("submitted");
     setTimeout(() => {
       handleOpenChange(false);
     }, 2500);
   }, [handleOpenChange]);
 
+  // DEV-ONLY: skip to review with mock data
+  const devSkipToReview = useCallback(() => {
+    setAnalysisResult({
+      extractedData: {
+        companyName: "Acme Electrical Contractors",
+        bidAmount: "$1,250,000",
+        tradeBreakdown: [
+          { trade: "Electrical Rough-In", amount: "$450,000" },
+          { trade: "Lighting & Controls", amount: "$380,000" },
+          { trade: "Fire Alarm", amount: "$220,000" },
+          { trade: "Low Voltage", amount: "$200,000" },
+        ],
+        certifications: { mbe: true, wbe: false, other: [] },
+        bondInfo: { hasBidBond: true, bondingCapacity: "$2,000,000", bondCompany: "Surety Bond Co." },
+        insuranceInfo: { hasGeneralLiability: true, coverageAmount: "$2,000,000", certificateProvided: false },
+        contactInfo: { name: "Chris Patterson", email: "chris@acmeelectric.com", phone: "(512) 555-0147" },
+      },
+      messageTemplate: "Dear Turner Construction,\n\nPlease find attached our bid for the City Center Office Complex - Phase 2 project.\n\nTotal Bid Amount: $1,250,000\n\nBest regards",
+      checklist: [
+        { id: "1", label: "MBE Participation (15%)", description: "MBE documentation required", status: "found" as const, detail: "Documentation included showing 16.2% MBE participation" },
+        { id: "2", label: "Bid Bond", description: "Bid bond or bonding capacity letter", status: "found" as const, detail: "Bid bond document detected in uploads" },
+        { id: "3", label: "Insurance Certificate", description: "$2M general liability insurance", status: "needs-action" as const, detail: "$2M liability certificate not found" },
+        { id: "4", label: "Bid Deadline", description: "Bids due by 12:00 PM", status: "found" as const, detail: "Submission before 12:00 PM deadline" },
+      ],
+      confidence: 0.92,
+    });
+    setBidAmount("$1,250,000");
+    setMessageBody("Dear Turner Construction,\n\nPlease find attached our bid.\n\nBest regards");
+    setFiles([{ file: new File([""], "bid.pdf", { type: "application/pdf" }), id: "test-1", name: "bid-proposal.pdf", size: 245000, type: "application/pdf" }]);
+    setStep("review");
+  }, []);
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="!max-w-[min(900px,calc(100vw-2rem))] w-full h-[80vh] overflow-y-auto overflow-x-hidden p-0">
+      <DialogContent
+        ref={modalContentRef}
+        className="!max-w-[min(900px,calc(100vw-2rem))] w-full h-[80vh] overflow-y-auto overflow-x-hidden p-0"
+        showCloseButton={!showEnvelopeAnimation}
+        style={showEnvelopeAnimation ? { opacity: 0, pointerEvents: "none" } : undefined}
+      >
         <AnimatePresence mode="wait">
           {/* ===== UPLOAD STEP ===== */}
           {step === "upload" && (
@@ -253,7 +308,7 @@ export function BidSubmissionModal({
               className="p-6 overflow-x-hidden"
             >
               <DialogHeader>
-                <DialogTitle className="text-xl font-bold text-gray-900">
+                <DialogTitle className="text-xl font-semibold text-foreground">
                   Submit Bid
                 </DialogTitle>
               </DialogHeader>
@@ -261,10 +316,10 @@ export function BidSubmissionModal({
               <div className="mt-4">
                 {/* Drop zone */}
                 <div
-                  className={`relative border-2 border-dashed rounded-xl p-8 py-12 text-center transition-colors cursor-pointer ${
+                  className={`relative border-2 border-dashed rounded-[8px] p-8 py-12 text-center transition-colors cursor-pointer ${
                     isDragging
-                      ? "border-emerald-400 bg-emerald-50"
-                      : "border-gray-300 bg-white hover:border-gray-400"
+                      ? "border-success-border bg-success-surface"
+                      : "border-border bg-card hover:border-muted-foreground"
                   }`}
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -289,26 +344,27 @@ export function BidSubmissionModal({
                       e.target.value = "";
                     }}
                   />
-                  <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-gray-100">
-                    <Upload className="h-7 w-7 text-gray-400" />
+                  <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-muted">
+                    <Upload className="h-7 w-7 text-muted-foreground" />
                   </div>
-                  <p className="mt-4 text-lg font-semibold text-gray-800">
+                  <p className="mt-4 text-lg font-semibold text-foreground">
                     Drop your bid files here
                   </p>
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     or click to browse from your computer
                   </p>
-                  <button
+                  <Button
                     type="button"
-                    className="mt-4 rounded-lg bg-emerald-400 px-8 py-3 text-base font-semibold text-white transition-colors hover:bg-emerald-500"
+                    size="lg"
+                    className="mt-4"
                     onClick={(e) => {
                       e.stopPropagation();
                       fileInputRef.current?.click();
                     }}
                   >
                     Browse Files
-                  </button>
-                  <p className="mt-4 text-sm text-gray-400">
+                  </Button>
+                  <p className="mt-4 text-sm text-muted-foreground">
                     Supported formats: PDF, DOC, DOCX, XLS, XLSX, CSV
                   </p>
                 </div>
@@ -319,11 +375,11 @@ export function BidSubmissionModal({
                     {files.map((f) => (
                       <div
                         key={f.id}
-                        className="flex items-center gap-3 p-3 rounded-lg bg-muted/50"
+                        className="flex items-center gap-3 p-3 rounded-[8px] bg-muted"
                       >
                         <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
+                          <p className="text-sm font-medium truncate text-foreground">
                             {f.name}
                           </p>
                           <p className="text-xs text-muted-foreground">
@@ -343,7 +399,7 @@ export function BidSubmissionModal({
 
                 {/* Error message */}
                 {error && (
-                  <div className="mt-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                  <div className="mt-4 p-3 rounded-[8px] bg-destructive-surface border border-destructive-border">
                     <p className="text-sm text-destructive">{error}</p>
                   </div>
                 )}
@@ -357,6 +413,15 @@ export function BidSubmissionModal({
                 >
                   <Sparkles className="mr-2 h-4 w-4" />
                   Analyze Documents with AI
+                </Button>
+                {/* DEV ONLY - remove later */}
+                <Button
+                  className="w-full mt-2"
+                  size="sm"
+                  variant="outline"
+                  onClick={devSkipToReview}
+                >
+                  [DEV] Skip to Review
                 </Button>
               </div>
             </motion.div>
@@ -383,11 +448,11 @@ export function BidSubmissionModal({
                 }}
               >
                 <div className="relative">
-                  <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Sparkles className="h-8 w-8 text-primary" />
+                  <div className="h-16 w-16 rounded-full bg-ai-surface flex items-center justify-center">
+                    <Sparkles className="h-8 w-8 text-ai-foreground" />
                   </div>
                   <motion.div
-                    className="absolute inset-0 rounded-full border-2 border-primary/30"
+                    className="absolute inset-0 rounded-full border-2 border-ai-border"
                     animate={{ scale: [1, 1.5], opacity: [0.5, 0] }}
                     transition={{
                       repeat: Infinity,
@@ -398,7 +463,7 @@ export function BidSubmissionModal({
                 </div>
               </motion.div>
 
-              <h3 className="mt-6 text-lg font-semibold">
+              <h3 className="mt-6 text-lg font-semibold text-foreground">
                 AI is preparing your bid
               </h3>
 
@@ -419,7 +484,7 @@ export function BidSubmissionModal({
                 {[0, 1, 2].map((i) => (
                   <motion.div
                     key={i}
-                    className="h-2 w-2 rounded-full bg-primary"
+                    className="h-2 w-2 rounded-full bg-ai-border"
                     animate={{ opacity: [0.3, 1, 0.3] }}
                     transition={{
                       repeat: Infinity,
@@ -454,11 +519,11 @@ export function BidSubmissionModal({
 
               <div className="mt-6 space-y-5">
                 {/* Email Connection */}
-                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                <div className="flex items-center justify-between p-3 rounded-[8px] bg-muted">
                   <div className="flex items-center gap-2">
                     <Mail className="h-4 w-4 text-muted-foreground" />
                     {isEmailConnected ? (
-                      <span className="text-sm">
+                      <span className="text-sm text-foreground">
                         Connected as{" "}
                         <span className="font-medium">you@company.com</span>
                       </span>
@@ -486,10 +551,7 @@ export function BidSubmissionModal({
                     </Button>
                   )}
                   {isEmailConnected && (
-                    <Badge
-                      variant="outline"
-                      className="bg-green-100 text-green-800 border-green-200"
-                    >
+                    <Badge variant="success">
                       Connected
                     </Badge>
                   )}
@@ -528,17 +590,17 @@ export function BidSubmissionModal({
                     <Label className="text-sm font-medium">
                       Trade Breakdown
                     </Label>
-                    <div className="mt-1.5 rounded-lg border">
+                    <div className="mt-1.5 rounded-[8px] border border-border">
                       {analysisResult.extractedData.tradeBreakdown.map(
                         (item, i) => (
                           <div
                             key={i}
                             className={`flex justify-between p-3 text-sm ${
-                              i > 0 ? "border-t" : ""
+                              i > 0 ? "border-t border-border" : ""
                             }`}
                           >
-                            <span>{item.trade}</span>
-                            <span className="font-medium">{item.amount}</span>
+                            <span className="text-foreground">{item.trade}</span>
+                            <span className="font-medium text-foreground">{item.amount}</span>
                           </div>
                         )
                       )}
@@ -567,10 +629,10 @@ export function BidSubmissionModal({
                     {files.map((f) => (
                       <div
                         key={f.id}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted/50 text-sm"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted text-sm"
                       >
                         <Paperclip className="h-3 w-3 text-muted-foreground" />
-                        <span className="truncate max-w-[150px]">{f.name}</span>
+                        <span className="truncate max-w-[150px] text-foreground">{f.name}</span>
                       </div>
                     ))}
                   </div>
@@ -594,21 +656,19 @@ export function BidSubmissionModal({
                       return (
                         <div
                           key={item.id}
-                          className="flex items-start gap-3 p-3 rounded-lg bg-muted/30"
+                          className="flex items-start gap-3 p-3 rounded-[8px] bg-muted"
                         >
                           <Icon
                             className={`h-5 w-5 shrink-0 mt-0.5 ${config.color}`}
                           />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium">
+                              <span className="text-sm font-medium text-foreground">
                                 {item.label}
                               </span>
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${config.badgeVariant}`}
-                              >
+                              <Badge variant={config.badgeVariant}>
                                 {config.label}
-                              </span>
+                              </Badge>
                             </div>
                             <p className="text-xs text-muted-foreground mt-0.5">
                               {item.detail}
@@ -625,7 +685,7 @@ export function BidSubmissionModal({
                 {/* Share toggle */}
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium">
+                    <p className="text-sm font-medium text-foreground">
                       Share with future GCs
                     </p>
                     <p className="text-xs text-muted-foreground">
@@ -675,8 +735,8 @@ export function BidSubmissionModal({
                   delay: 0.1,
                 }}
               >
-                <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
-                  <CheckCircle2 className="h-8 w-8 text-green-600" />
+                <div className="h-16 w-16 rounded-full bg-success-surface flex items-center justify-center">
+                  <CheckCircle2 className="h-8 w-8 text-success-foreground" />
                 </div>
               </motion.div>
 
@@ -686,7 +746,7 @@ export function BidSubmissionModal({
                 transition={{ delay: 0.3 }}
                 className="text-center mt-4"
               >
-                <h3 className="text-lg font-semibold">
+                <h3 className="text-lg font-semibold text-foreground">
                   Bid Submitted Successfully
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -697,6 +757,13 @@ export function BidSubmissionModal({
           )}
         </AnimatePresence>
       </DialogContent>
+
+      {showEnvelopeAnimation && modalRect && (
+        <EnvelopeAnimation
+          modalRect={modalRect}
+          onComplete={handleEnvelopeComplete}
+        />
+      )}
     </Dialog>
   );
 }
