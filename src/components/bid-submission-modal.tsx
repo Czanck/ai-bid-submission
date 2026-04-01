@@ -15,6 +15,18 @@ import {
   Sparkles,
   Send,
   Trash2,
+  Building2,
+  Plus,
+  Pencil,
+  Lightbulb,
+  ArrowRight,
+  ChevronDown,
+  ChevronRight,
+  Info,
+  ShieldCheck,
+  ShieldAlert,
+  TriangleAlert,
+  BarChart3,
 } from "lucide-react";
 import {
   Dialog,
@@ -35,6 +47,7 @@ import type {
   UploadedFile,
   AnalyzeBidResponse,
   RequirementStatus,
+  BidReadinessScore,
 } from "@/lib/types";
 
 interface BidSubmissionModalProps {
@@ -43,6 +56,7 @@ interface BidSubmissionModalProps {
   projectName?: string;
   gcName?: string;
   gcEmail?: string;
+  projectId?: string;
 }
 
 const statusConfig: Record<
@@ -69,6 +83,39 @@ const statusConfig: Record<
   },
 };
 
+const requirementHelp: Record<string, { title: string; steps: string[]; tip: string }> = {
+  "gc-phone-call": {
+    title: "How to complete the GC phone call",
+    steps: [
+      "Call the General Contractor at (888) 888-8888 before submitting",
+      "Confirm your intent to bid and ask any clarifying questions",
+      "Note the name of the person you spoke with and the date/time",
+      "Reference the call in your bid submission cover letter",
+    ],
+    tip: "Try calling during business hours (8 AM – 5 PM). If you can't reach anyone, leave a voicemail with your company name and callback number.",
+  },
+  "general-liability": {
+    title: "How to provide insurance documentation",
+    steps: [
+      "Contact your insurance provider to request a Certificate of Insurance (COI)",
+      "Ensure the COI shows at least $2,000,000 in general liability coverage",
+      "Have the certificate list the General Contractor as an additional insured",
+      "Attach the COI as a separate document with your bid submission",
+    ],
+    tip: "Most insurers can issue a COI within 24 hours. If your current coverage is below $2M, ask about an umbrella policy.",
+  },
+  "submit-via-planhub": {
+    title: "How to submit through PlanHub",
+    steps: [
+      "Ensure you are logged into your PlanHub account",
+      "Navigate to this project and click 'Submit Bid'",
+      "Upload your bid documents and fill in the required fields",
+      "Review your submission and click the final Submit button",
+    ],
+    tip: "You're already on PlanHub! Submitting your bid here satisfies this requirement automatically.",
+  },
+};
+
 const processingMessages = [
   "Extracting text from documents...",
   "Analyzing bid information...",
@@ -88,7 +135,21 @@ export function BidSubmissionModal({
   projectName = "City Center Office Complex - Phase 2",
   gcName = "Turner Construction",
   gcEmail = "bids@turnerconstruction.com",
+  projectId = "project1",
 }: BidSubmissionModalProps) {
+  const applyTemplate = useCallback(
+    (tpl: string) => {
+      return tpl
+        .replace(/\{\{GC Name\}\}/g, gcName)
+        .replace(/\{\{Project Name\}\}/g, projectName)
+        .replace(/\{\{Bid Amount\}\}/g, bidAmountRef.current || "$0.00")
+        .replace(/\{\{Your Company\}\}/g, "Company X Electric")
+        .replace(/\{\{Due Date\}\}/g, "03/23/2026")
+        .replace(/\{\{Your Name\}\}/g, "Chase Zanck");
+    },
+    [gcName, projectName]
+  );
+
   const [step, setStep] = useState<ModalStep>("upload");
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [analysisResult, setAnalysisResult] =
@@ -98,11 +159,39 @@ export function BidSubmissionModal({
   const [processingMsgIndex, setProcessingMsgIndex] = useState(0);
 
   // Review form state
-  const [bidAmount, setBidAmount] = useState("");
+  const bidAmountRef = useRef("");
+  const [bidAmount, setBidAmountRaw] = useState("");
+  const setBidAmount = useCallback((val: string) => {
+    bidAmountRef.current = val;
+    setBidAmountRaw(val);
+  }, []);
   const [messageBody, setMessageBody] = useState("");
   const [isEmailConnected, setIsEmailConnected] = useState(false);
   const [isConnectingEmail, setIsConnectingEmail] = useState(false);
   const [shareWithGCs, setShareWithGCs] = useState(true);
+  const [showCc, setShowCc] = useState(false);
+  const [showBcc, setShowBcc] = useState(false);
+  const [ccValue, setCcValue] = useState("");
+  const [bccValue, setBccValue] = useState("");
+  const [additionalTo, setAdditionalTo] = useState<string[]>([]);
+  const [newToInput, setNewToInput] = useState("");
+  const [showNewToInput, setShowNewToInput] = useState(false);
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
+  const [helpExpandedId, setHelpExpandedId] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isImprovingBid, setIsImprovingBid] = useState(false);
+  const [bidScore, setBidScore] = useState<BidReadinessScore | null>(null);
+  const [scoreBreakdownOpen, setScoreBreakdownOpen] = useState(false);
+  const [followUpInput, setFollowUpInput] = useState("");
+  const [isFollowingUp, setIsFollowingUp] = useState(false);
+  const [followUpResponse, setFollowUpResponse] = useState<string[] | null>(null);
+  const followUpInputRef = useRef<HTMLInputElement>(null);
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const [requirementsExpanded, setRequirementsExpanded] = useState(true);
+  const [messageTemplate, setMessageTemplate] = useState(
+    "Dear {{GC Name}},\n\nPlease find attached our bid submission for {{Project Name}}.\n\nBid Summary:\n- Total Bid Amount: {{Bid Amount}}\n\nBest regards,\n{{Your Company}}"
+  );
+  const templateTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modalContentRef = useRef<HTMLDivElement>(null);
@@ -118,6 +207,23 @@ export function BidSubmissionModal({
     return () => clearInterval(interval);
   }, [step]);
 
+  // Rotate follow-up placeholder text using AI-generated chips when available
+  const defaultPlaceholders = [
+    "Should I break out generator work separately?",
+    "Am I missing any scope items?",
+    "What exclusions should I add?",
+    "Does my timeline look realistic?",
+  ];
+  const followUpPlaceholders = bidScore?.promptChips?.length ? bidScore.promptChips : defaultPlaceholders;
+
+  useEffect(() => {
+    if (!bidScore) return;
+    const interval = setInterval(() => {
+      setPlaceholderIndex((prev) => (prev + 1) % followUpPlaceholders.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [bidScore, followUpPlaceholders.length]);
+
   // Reset state when modal closes
   const handleOpenChange = useCallback(
     (newOpen: boolean) => {
@@ -132,10 +238,27 @@ export function BidSubmissionModal({
           setBidAmount("");
           setMessageBody("");
           setIsEmailConnected(false);
-          setShareWithGCs(false);
+          setShareWithGCs(true);
           setProcessingMsgIndex(0);
           setShowEnvelopeAnimation(false);
           setModalRect(null);
+          setShowCc(false);
+          setShowBcc(false);
+          setCcValue("");
+          setBccValue("");
+          setAdditionalTo([]);
+          setNewToInput("");
+          setShowNewToInput(false);
+          setShowTemplateEditor(false);
+          setHelpExpandedId(null);
+          setRequirementsExpanded(true);
+          setIsAnalyzing(false);
+          setIsImprovingBid(false);
+          setBidScore(null);
+          setScoreBreakdownOpen(false);
+          setFollowUpInput("");
+          setIsFollowingUp(false);
+          setFollowUpResponse(null);
         }, 300);
       }
       onOpenChange(newOpen);
@@ -185,13 +308,14 @@ export function BidSubmissionModal({
   const handleAnalyze = useCallback(async () => {
     if (files.length === 0) return;
 
-    setStep("processing");
+    setIsAnalyzing(true);
+    setStep("review");
     setError(null);
-    setProcessingMsgIndex(0);
 
     try {
       const formData = new FormData();
       files.forEach((f) => formData.append("files", f.file));
+      formData.append("projectId", projectId);
 
       const response = await fetch("/api/analyze-bid", {
         method: "POST",
@@ -221,14 +345,75 @@ export function BidSubmissionModal({
       setAnalysisResult(result);
       setBidAmount(result.extractedData.bidAmount);
       setMessageBody(result.messageTemplate);
-      setStep("review");
+      const hasUnmet = result.checklist.some((c) => c.status === "needs-action" || c.status === "missing");
+      setRequirementsExpanded(hasUnmet);
+      setIsAnalyzing(false);
+
+      // Auto-trigger bid readiness score after analysis completes
+      setIsImprovingBid(true);
+      setBidScore(null);
+      try {
+        const improveForm = new FormData();
+        files.forEach((f) => improveForm.append("files", f.file));
+        improveForm.append("projectId", projectId);
+        const improveRes = await fetch("/api/improve-bid", { method: "POST", body: improveForm });
+        const improveData = await improveRes.json() as BidReadinessScore;
+        if (improveData.score !== undefined) {
+          setBidScore(improveData);
+        }
+      } catch {
+        // Score failed silently — not critical to submission
+      } finally {
+        setIsImprovingBid(false);
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Analysis failed. Please try again."
       );
+      setIsAnalyzing(false);
       setStep("upload");
     }
   }, [files]);
+
+  const handleImproveBid = useCallback(async () => {
+    if (files.length === 0) return;
+    setIsImprovingBid(true);
+    setBidScore(null);
+    try {
+      const formData = new FormData();
+      files.forEach((f) => formData.append("files", f.file));
+      formData.append("projectId", projectId);
+      const response = await fetch("/api/improve-bid", { method: "POST", body: formData });
+      const data = await response.json() as BidReadinessScore;
+      if (data.score !== undefined) {
+        setBidScore(data);
+      }
+    } catch {
+      // Score failed silently
+    } finally {
+      setIsImprovingBid(false);
+    }
+  }, [files, projectId]);
+
+  const handleFollowUp = useCallback(async () => {
+    if (!followUpInput.trim() || files.length === 0) return;
+    setIsFollowingUp(true);
+    const formData = new FormData();
+    files.forEach((f) => formData.append("files", f.file));
+    formData.append("projectId", projectId);
+    formData.append("followUp", followUpInput.trim());
+    formData.append("context", bidScore ? `Score: ${bidScore.score}/100. ${bidScore.summary}. ${bidScore.dimensions.map(d => `${d.name}: ${d.score}/100 - ${d.explanation}`).join(". ")}` : "");
+    setFollowUpInput("");
+    try {
+      const response = await fetch("/api/improve-bid", { method: "POST", body: formData });
+      const data = await response.json() as { feedback?: string[] };
+      setFollowUpResponse(data.feedback ?? ["I'm not sure. Try rephrasing your question."]);
+    } catch {
+      setFollowUpResponse(["Could not load a response. Please try again."]);
+    } finally {
+      setIsFollowingUp(false);
+    }
+  }, [files, projectId, followUpInput, bidScore]);
 
   const handleConnectEmail = useCallback(() => {
     setIsConnectingEmail(true);
@@ -256,43 +441,103 @@ export function BidSubmissionModal({
     }, 2500);
   }, [handleOpenChange]);
 
-  // DEV-ONLY: skip to review with mock data
+  // DEV-ONLY: skip to review with mock data (progressive loading)
   const devSkipToReview = useCallback(() => {
-    setAnalysisResult({
-      extractedData: {
-        companyName: "Acme Electrical Contractors",
-        bidAmount: "$1,250,000",
-        tradeBreakdown: [
-          { trade: "Electrical Rough-In", amount: "$450,000" },
-          { trade: "Lighting & Controls", amount: "$380,000" },
-          { trade: "Fire Alarm", amount: "$220,000" },
-          { trade: "Low Voltage", amount: "$200,000" },
-        ],
-        certifications: { mbe: true, wbe: false, other: [] },
-        bondInfo: { hasBidBond: true, bondingCapacity: "$2,000,000", bondCompany: "Surety Bond Co." },
-        insuranceInfo: { hasGeneralLiability: true, coverageAmount: "$2,000,000", certificateProvided: false },
-        contactInfo: { name: "Chris Patterson", email: "chris@acmeelectric.com", phone: "(512) 555-0147" },
-      },
-      messageTemplate: "Dear Turner Construction,\n\nPlease find attached our bid for the City Center Office Complex - Phase 2 project.\n\nTotal Bid Amount: $1,250,000\n\nBest regards",
-      checklist: [
-        { id: "1", label: "MBE Participation (15%)", description: "MBE documentation required", status: "found" as const, detail: "Documentation included showing 16.2% MBE participation" },
-        { id: "2", label: "Bid Bond", description: "Bid bond or bonding capacity letter", status: "found" as const, detail: "Bid bond document detected in uploads" },
-        { id: "3", label: "Insurance Certificate", description: "$2M general liability insurance", status: "needs-action" as const, detail: "$2M liability certificate not found" },
-        { id: "4", label: "Bid Deadline", description: "Bids due by 12:00 PM", status: "found" as const, detail: "Submission before 12:00 PM deadline" },
-      ],
-      confidence: 0.92,
-    });
-    setBidAmount("$1,250,000");
-    setMessageBody("Dear Turner Construction,\n\nPlease find attached our bid.\n\nBest regards");
+    setBidAmount("");
+    setMessageBody("");
     setFiles([{ file: new File([""], "bid.pdf", { type: "application/pdf" }), id: "test-1", name: "bid-proposal.pdf", size: 245000, type: "application/pdf" }]);
+    setIsAnalyzing(true);
     setStep("review");
-  }, []);
+
+    // Simulate progressive population after AI processing delay
+    setTimeout(() => {
+      if (projectId === "project2") {
+        setAnalysisResult({
+          extractedData: {
+            companyName: "Company X Electric",
+            bidAmount: "$2,353,424.00",
+            tradeBreakdown: [
+              { trade: "Electrical Rough-In", amount: "$685,000" },
+              { trade: "Panel Upgrades", amount: "$412,000" },
+              { trade: "Fire Alarm", amount: "$298,000" },
+              { trade: "Low Voltage / Data", amount: "$345,424" },
+              { trade: "Emergency Generator Tie-In", amount: "$613,000" },
+            ],
+            certifications: { mbe: false, wbe: false, other: [] },
+            bondInfo: { hasBidBond: false, bondingCapacity: "", bondCompany: "" },
+            insuranceInfo: { hasGeneralLiability: true, coverageAmount: "$1,000,000", certificateProvided: true },
+            contactInfo: { name: "Chase Zanck", email: "chase@companyxelectric.com", phone: "(512) 555-0199" },
+          },
+          messageTemplate: `Dear ${gcName},\n\nPlease find attached our bid submission for ${projectName}.\n\nBid Summary:\n- Total Bid Amount: $2,353,424.00\n\nBest regards,\nCompany X Electric`,
+          checklist: [
+            { id: "submit-via-planhub", label: "Submit via PlanHub", description: "Please submit all bids through PlanHub", status: "found" as const, detail: "Bid is being submitted through PlanHub" },
+          ],
+          confidence: 0.95,
+        });
+        setBidAmount("$2,353,424.00");
+        setMessageBody(`Dear ${gcName},\n\nPlease find attached our bid submission for ${projectName}.\n\nTotal Bid Amount: $2,353,424.00\n\nBest regards,\nCompany X Electric`);
+        setRequirementsExpanded(false); // all met
+      } else {
+        setAnalysisResult({
+          extractedData: {
+            companyName: "Acme Electrical Contractors",
+            bidAmount: "$1,250,000",
+            tradeBreakdown: [
+              { trade: "Electrical Rough-In", amount: "$450,000" },
+              { trade: "Lighting & Controls", amount: "$380,000" },
+              { trade: "Fire Alarm", amount: "$220,000" },
+              { trade: "Low Voltage", amount: "$200,000" },
+            ],
+            certifications: { mbe: true, wbe: false, other: [] },
+            bondInfo: { hasBidBond: true, bondingCapacity: "$2,000,000", bondCompany: "Surety Bond Co." },
+            insuranceInfo: { hasGeneralLiability: true, coverageAmount: "$2,000,000", certificateProvided: false },
+            contactInfo: { name: "Chris Patterson", email: "chris@acmeelectric.com", phone: "(512) 555-0147" },
+          },
+          messageTemplate: "Dear Turner Construction,\n\nPlease find attached our bid for the City Center Office Complex - Phase 2 project.\n\nTotal Bid Amount: $1,250,000\n\nBest regards",
+          checklist: [
+            { id: "general-liability", label: "Insurance Certificate", description: "$2M general liability insurance", status: "needs-action" as const, detail: "$2M liability certificate not found" },
+          ],
+          confidence: 0.92,
+        });
+        setBidAmount("$1,250,000");
+        setMessageBody("Dear Turner Construction,\n\nPlease find attached our bid.\n\nBest regards");
+        setRequirementsExpanded(true);
+      }
+      setIsAnalyzing(false);
+
+      // Auto-trigger bid readiness score
+      setIsImprovingBid(true);
+      setBidScore(null);
+      (async () => {
+        try {
+          const improveForm = new FormData();
+          [{ file: new File([""], "bid.pdf", { type: "application/pdf" }), id: "test-1", name: "bid-proposal.pdf", size: 245000, type: "application/pdf" }].forEach((f) => improveForm.append("files", f.file));
+          improveForm.append("projectId", projectId);
+          const improveRes = await fetch("/api/improve-bid", { method: "POST", body: improveForm });
+          const improveData = await improveRes.json() as BidReadinessScore;
+          if (improveData.score !== undefined) {
+            setBidScore(improveData);
+          }
+        } catch {
+          // Score failed silently
+        } finally {
+          setIsImprovingBid(false);
+        }
+      })();
+    }, 2500);
+  }, [projectId, gcName, projectName]);
+
+  const isLoading = step === "review" && isAnalyzing;
+
+  const Skeleton = ({ className = "" }: { className?: string }) => (
+    <div className={`animate-pulse rounded-md bg-muted ${className}`} />
+  );
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         ref={modalContentRef}
-        className="!max-w-[min(900px,calc(100vw-2rem))] w-full h-[80vh] overflow-y-auto overflow-x-hidden p-0"
+        className="!max-w-[min(900px,calc(100vw-2rem))] w-full h-[80vh] overflow-x-hidden overflow-y-auto p-0"
         showCloseButton={!showEnvelopeAnimation}
         style={showEnvelopeAnimation ? { opacity: 0, pointerEvents: "none" } : undefined}
       >
@@ -498,212 +743,801 @@ export function BidSubmissionModal({
           )}
 
           {/* ===== REVIEW STEP ===== */}
-          {step === "review" && analysisResult && (
+          {step === "review" && (
             <motion.div
               key="review"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
-              className="p-6 overflow-x-hidden"
+              className="flex flex-col min-h-[80vh]"
             >
-              <DialogHeader>
-                <DialogTitle className="text-xl">Review & Submit</DialogTitle>
-              </DialogHeader>
+              {/* Fixed header */}
+              <div className="px-6 pt-6 pb-4 shrink-0">
+                <DialogHeader>
+                  <DialogTitle className="text-xl">Review & Submit</DialogTitle>
+                </DialogHeader>
+              </div>
 
-              <div className="mt-6 space-y-5">
-                {/* Email Connection */}
-                <div className="flex items-center justify-between p-3 rounded-[8px] bg-muted">
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    {isEmailConnected ? (
-                      <span className="text-sm text-foreground">
-                        Connected as{" "}
-                        <span className="font-medium">you@company.com</span>
-                      </span>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">
-                        Connect your email to send directly
-                      </span>
-                    )}
-                  </div>
-                  {!isEmailConnected && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleConnectEmail}
-                      disabled={isConnectingEmail}
-                    >
-                      {isConnectingEmail ? (
-                        <>
-                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                          Connecting...
-                        </>
-                      ) : (
-                        "Connect Email"
-                      )}
-                    </Button>
-                  )}
-                  {isEmailConnected && (
-                    <Badge variant="success">
-                      Connected
-                    </Badge>
-                  )}
-                </div>
-
-                {/* To field */}
-                <div>
-                  <Label htmlFor="to" className="text-sm font-medium">
-                    To
-                  </Label>
-                  <Input
-                    id="to"
-                    value={`${gcName} <${gcEmail}>`}
-                    readOnly
-                    className="mt-1.5 bg-muted/30"
-                  />
-                </div>
-
-                {/* Bid Amount */}
-                <div>
-                  <Label htmlFor="bidAmount" className="text-sm font-medium">
-                    Bid Amount
-                  </Label>
-                  <Input
-                    id="bidAmount"
-                    value={bidAmount}
-                    onChange={(e) => setBidAmount(e.target.value)}
-                    placeholder="$0.00"
-                    className="mt-1.5 text-lg font-semibold"
-                  />
-                </div>
-
-                {/* Trade Breakdown */}
-                {analysisResult.extractedData.tradeBreakdown.length > 0 && (
+              {/* Scrollable body */}
+              <div className="flex-1 px-6 pb-4">
+                <div className="space-y-5">
+                  {/* To field */}
                   <div>
-                    <Label className="text-sm font-medium">
-                      Trade Breakdown
-                    </Label>
-                    <div className="mt-1.5 rounded-[8px] border border-border">
-                      {analysisResult.extractedData.tradeBreakdown.map(
-                        (item, i) => (
-                          <div
-                            key={i}
-                            className={`flex justify-between p-3 text-sm ${
-                              i > 0 ? "border-t border-border" : ""
-                            }`}
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="to" className="text-sm font-medium">
+                        To
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        {!showCc && (
+                          <button
+                            onClick={() => setShowCc(true)}
+                            className="text-xs font-medium text-primary hover:underline"
                           >
-                            <span className="text-foreground">{item.trade}</span>
-                            <span className="font-medium text-foreground">{item.amount}</span>
-                          </div>
-                        )
+                            CC
+                          </button>
+                        )}
+                        {!showBcc && (
+                          <button
+                            onClick={() => setShowBcc(true)}
+                            className="text-xs font-medium text-primary hover:underline"
+                          >
+                            BCC
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-[8px] border border-input bg-muted/30 px-3 py-2 min-h-[42px]">
+                      {/* Primary recipient pill */}
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-success-surface text-primary text-sm px-2.5 py-1">
+                        {gcEmail}
+                        <button
+                          className="text-muted-foreground hover:text-foreground"
+                          onClick={() => {}}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                      {/* Additional recipient pills */}
+                      {additionalTo.map((email, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-success-surface text-primary text-sm px-2.5 py-1"
+                        >
+                          {email}
+                          <button
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={() =>
+                              setAdditionalTo(additionalTo.filter((_, idx) => idx !== i))
+                            }
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                      {/* Inline input for new recipient */}
+                      {showNewToInput ? (
+                        <input
+                          autoFocus
+                          type="email"
+                          value={newToInput}
+                          onChange={(e) => setNewToInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && newToInput.trim()) {
+                              setAdditionalTo([...additionalTo, newToInput.trim()]);
+                              setNewToInput("");
+                              setShowNewToInput(false);
+                            }
+                            if (e.key === "Escape") {
+                              setNewToInput("");
+                              setShowNewToInput(false);
+                            }
+                          }}
+                          onBlur={() => {
+                            if (newToInput.trim()) {
+                              setAdditionalTo([...additionalTo, newToInput.trim()]);
+                            }
+                            setNewToInput("");
+                            setShowNewToInput(false);
+                          }}
+                          placeholder="Add email..."
+                          className="bg-transparent outline-none text-sm min-w-[120px] flex-1"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => setShowNewToInput(true)}
+                          className="h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground hover:bg-accent transition-colors"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
                       )}
                     </div>
                   </div>
-                )}
 
-                {/* Message Body */}
-                <div>
-                  <Label htmlFor="message" className="text-sm font-medium">
-                    Message
-                  </Label>
-                  <Textarea
-                    id="message"
-                    value={messageBody}
-                    onChange={(e) => setMessageBody(e.target.value)}
-                    rows={6}
-                    className="mt-1.5"
-                  />
-                </div>
+                  {/* CC field */}
+                  {showCc && (
+                    <div>
+                      <Label htmlFor="cc" className="text-sm font-medium">
+                        CC
+                      </Label>
+                      <Input
+                        id="cc"
+                        value={ccValue}
+                        onChange={(e) => setCcValue(e.target.value)}
+                        placeholder="Add CC recipients..."
+                        className="mt-1.5"
+                      />
+                    </div>
+                  )}
 
-                {/* Attachments */}
-                <div>
-                  <Label className="text-sm font-medium">Attachments</Label>
-                  <div className="mt-1.5 flex flex-wrap gap-2">
-                    {files.map((f) => (
-                      <div
-                        key={f.id}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted text-sm"
-                      >
-                        <Paperclip className="h-3 w-3 text-muted-foreground" />
-                        <span className="truncate max-w-[150px] text-foreground">{f.name}</span>
-                      </div>
-                    ))}
+                  {/* BCC field */}
+                  {showBcc && (
+                    <div>
+                      <Label htmlFor="bcc" className="text-sm font-medium">
+                        BCC
+                      </Label>
+                      <Input
+                        id="bcc"
+                        value={bccValue}
+                        onChange={(e) => setBccValue(e.target.value)}
+                        placeholder="Add BCC recipients..."
+                        className="mt-1.5"
+                      />
+                    </div>
+                  )}
+
+                  {/* Bid Amount */}
+                  <div>
+                    <Label htmlFor="bidAmount" className="text-sm font-medium">
+                      Bid Amount
+                    </Label>
+                    {isLoading ? (
+                      <Skeleton className="mt-1.5 h-11 w-full" />
+                    ) : (
+                      <Input
+                        id="bidAmount"
+                        value={bidAmount}
+                        onChange={(e) => setBidAmount(e.target.value)}
+                        placeholder="$0.00"
+                        className="mt-1.5 text-lg font-semibold"
+                      />
+                    )}
                   </div>
-                </div>
 
-                <Separator />
+                  {/* Subject */}
+                  <div>
+                    <Label htmlFor="subject" className="text-sm font-medium">
+                      Subject
+                    </Label>
+                    {isLoading ? (
+                      <Skeleton className="mt-1.5 h-10 w-full" />
+                    ) : (
+                      <Input
+                        id="subject"
+                        value={`${projectName} - Bid Submission`}
+                        readOnly
+                        className="mt-1.5 bg-muted/30"
+                      />
+                    )}
+                  </div>
 
-                {/* Requirements Checklist */}
-                <div>
-                  <Label className="text-sm font-medium">
-                    Special Instructions Check
-                  </Label>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    AI verified your documents against {gcName}&apos;s
-                    requirements
-                  </p>
-                  <div className="mt-3 space-y-2">
-                    {analysisResult.checklist.map((item) => {
-                      const config = statusConfig[item.status];
-                      const Icon = config.icon;
-                      return (
-                        <div
-                          key={item.id}
-                          className="flex items-start gap-3 p-3 rounded-[8px] bg-muted"
+                  {/* Message Body */}
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="message" className="text-sm font-medium">
+                        Message
+                      </Label>
+                      {!isLoading && (
+                        <button
+                          onClick={() => setShowTemplateEditor(!showTemplateEditor)}
+                          className="flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
                         >
-                          <Icon
-                            className={`h-5 w-5 shrink-0 mt-0.5 ${config.color}`}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-foreground">
-                                {item.label}
-                              </span>
-                              <Badge variant={config.badgeVariant}>
-                                {config.label}
-                              </Badge>
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {item.detail}
-                            </p>
+                          <Pencil className="h-3 w-3" />
+                          {showTemplateEditor ? "Done editing" : "Customize template"}
+                        </button>
+                      )}
+                    </div>
+
+                    {isLoading ? (
+                      <div className="mt-1.5 space-y-2">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-5/6" />
+                        <Skeleton className="h-4 w-2/3" />
+                      </div>
+                    ) : showTemplateEditor ? (
+                      <div className="mt-1.5 space-y-3">
+                        {/* Variable chips */}
+                        <div>
+                          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                            Insert variable
+                          </span>
+                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                            {[
+                              { label: "GC Name", value: "{{GC Name}}" },
+                              { label: "Project Name", value: "{{Project Name}}" },
+                              { label: "Bid Amount", value: "{{Bid Amount}}" },
+                              { label: "Your Company", value: "{{Your Company}}" },
+                              { label: "Due Date", value: "{{Due Date}}" },
+                              { label: "Your Name", value: "{{Your Name}}" },
+                            ].map((v) => (
+                              <button
+                                key={v.label}
+                                onClick={() => {
+                                  const ta = templateTextareaRef.current;
+                                  if (ta) {
+                                    const start = ta.selectionStart;
+                                    const end = ta.selectionEnd;
+                                    const before = messageTemplate.slice(0, start);
+                                    const after = messageTemplate.slice(end);
+                                    const newVal = before + v.value + after;
+                                    setMessageTemplate(newVal);
+                                    // Apply template to message
+                                    setMessageBody(applyTemplate(newVal));
+                                    setTimeout(() => {
+                                      ta.focus();
+                                      ta.selectionStart = ta.selectionEnd = start + v.value.length;
+                                    }, 0);
+                                  } else {
+                                    setMessageTemplate(messageTemplate + v.value);
+                                    setMessageBody(applyTemplate(messageTemplate + v.value));
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-info-surface text-info-foreground border border-info-border hover:bg-info-surface/80 transition-colors"
+                              >
+                                <Plus className="h-2.5 w-2.5" />
+                                {v.label}
+                              </button>
+                            ))}
                           </div>
                         </div>
-                      );
-                    })}
+                        {/* Template editor */}
+                        <Textarea
+                          ref={templateTextareaRef}
+                          value={messageTemplate}
+                          onChange={(e) => {
+                            setMessageTemplate(e.target.value);
+                            setMessageBody(applyTemplate(e.target.value));
+                          }}
+                          rows={8}
+                          className="font-mono text-sm"
+                          placeholder="Write your template using {{Variable Name}} syntax..."
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          Variables like {"{{GC Name}}"} will be replaced with actual values in the message above.
+                        </p>
+                      </div>
+                    ) : (
+                      <Textarea
+                        id="message"
+                        value={messageBody}
+                        onChange={(e) => setMessageBody(e.target.value)}
+                        rows={6}
+                        className="mt-1.5"
+                      />
+                    )}
+                  </div>
+
+                  {/* Documents & Requirements — combined section */}
+                  <div className="rounded-[8px] border border-border">
+                  {isLoading ? (
+                    <div className="p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Skeleton className="h-4 w-4" />
+                          <Skeleton className="h-4 w-48" />
+                        </div>
+                        <Skeleton className="h-5 w-28 rounded-full" />
+                      </div>
+                      <div className="border-t border-border pt-3 space-y-2">
+                        <Skeleton className="h-3 w-24" />
+                        <div className="flex gap-2">
+                          <Skeleton className="h-8 w-36 rounded-full" />
+                        </div>
+                      </div>
+                      <div className="border-t border-border pt-3 space-y-2">
+                        <Skeleton className="h-3 w-32" />
+                        <Skeleton className="h-16 w-full rounded-lg" />
+                        <Skeleton className="h-16 w-full rounded-lg" />
+                      </div>
+                    </div>
+                  ) : (
+                  <>
+
+                    {/* Bid Readiness Score section */}
+                    {(isImprovingBid || bidScore !== null) && (
+                      <div className="border-b border-border">
+                        {isImprovingBid ? (
+                          <div className="px-4 py-3 bg-purple-50/30 space-y-3">
+                            <div className="flex items-center gap-3">
+                              <div className="h-12 w-12 rounded-lg bg-purple-200 animate-pulse shrink-0" />
+                              <div className="flex-1 space-y-2">
+                                <div className="h-3.5 rounded bg-purple-200 animate-pulse w-32" />
+                                <div className="h-3 rounded bg-purple-100 animate-pulse w-48" />
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <div className="h-6 w-28 rounded-full bg-purple-100 animate-pulse" />
+                              <div className="h-6 w-24 rounded-full bg-purple-100 animate-pulse" />
+                              <div className="h-6 w-32 rounded-full bg-purple-100 animate-pulse" />
+                            </div>
+                          </div>
+                        ) : bidScore !== null ? (
+                          <div className="bg-purple-50/30">
+                            {/* Score card */}
+                            <div className="px-4 py-3">
+                              <div className="flex items-start gap-3">
+                                {/* Score circle */}
+                                <div className={`relative h-12 w-12 rounded-lg flex items-center justify-center shrink-0 ${
+                                  bidScore.status === "ready" ? "bg-emerald-100 text-emerald-700" :
+                                  bidScore.status === "needs-review" ? "bg-amber-100 text-amber-700" :
+                                  "bg-red-100 text-red-700"
+                                }`}>
+                                  <span className="text-lg font-bold leading-none">{bidScore.score}</span>
+                                </div>
+                                {/* Score details */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="text-sm font-semibold text-foreground">Bid Readiness</span>
+                                    <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                                      bidScore.status === "ready" ? "bg-emerald-100 text-emerald-700" :
+                                      bidScore.status === "needs-review" ? "bg-amber-100 text-amber-700" :
+                                      "bg-red-100 text-red-700"
+                                    }`}>
+                                      {bidScore.status === "ready" ? "Ready" : bidScore.status === "needs-review" ? "Needs Review" : "High Risk"}
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground">
+                                      Confidence: {bidScore.confidence === "high" ? "High" : bidScore.confidence === "medium" ? "Medium" : "Low"}
+                                    </span>
+                                    <div className="relative group">
+                                      <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-56 px-2.5 py-2 rounded-md bg-foreground text-background text-[10px] leading-relaxed opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
+                                        This score reflects document coverage, scope clarity, and bid consistency. It does not assess pricing or perform takeoff.
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground leading-snug">{bidScore.summary}</p>
+                                  {bidScore.confidenceNote && (
+                                    <p className="text-[10px] text-muted-foreground/70 mt-0.5 italic">{bidScore.confidenceNote}</p>
+                                  )}
+                                </div>
+                                {/* Breakdown toggle */}
+                                <button
+                                  onClick={() => setScoreBreakdownOpen(!scoreBreakdownOpen)}
+                                  className="flex items-center gap-1 text-[10px] font-medium text-purple-600 hover:text-purple-700 transition-colors shrink-0 mt-0.5"
+                                >
+                                  <BarChart3 className="h-3 w-3" />
+                                  Details
+                                  <ChevronDown className={`h-3 w-3 transition-transform ${scoreBreakdownOpen ? "rotate-180" : ""}`} />
+                                </button>
+                              </div>
+
+                              {/* Prompt chips */}
+                              {bidScore.promptChips.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 mt-2.5">
+                                  {bidScore.promptChips.map((chip, i) => (
+                                    <button
+                                      key={i}
+                                      onClick={() => {
+                                        setFollowUpInput(chip);
+                                        setTimeout(() => followUpInputRef.current?.focus(), 50);
+                                      }}
+                                      className="text-[10px] px-2 py-1 rounded-full border border-purple-200 text-purple-600 hover:bg-purple-100 hover:border-purple-300 transition-colors"
+                                    >
+                                      {chip}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Score breakdown — expandable */}
+                            <AnimatePresence>
+                              {scoreBreakdownOpen && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: "auto", opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.2 }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="px-4 pb-3 space-y-3">
+                                    {bidScore.dimensions.map((dim, di) => (
+                                      <div key={di} className="border border-purple-100 rounded-lg overflow-hidden">
+                                        {/* Dimension header */}
+                                        <div className="flex items-center justify-between px-3 py-2 bg-white/60">
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-foreground">{dim.name}</span>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <div className="w-16 h-1.5 rounded-full bg-purple-100 overflow-hidden">
+                                              <div
+                                                className={`h-full rounded-full transition-all ${
+                                                  dim.score >= 80 ? "bg-emerald-500" :
+                                                  dim.score >= 50 ? "bg-amber-500" :
+                                                  "bg-red-500"
+                                                }`}
+                                                style={{ width: `${dim.score}%` }}
+                                              />
+                                            </div>
+                                            <span className={`text-xs font-bold min-w-[2rem] text-right ${
+                                              dim.score >= 80 ? "text-emerald-600" :
+                                              dim.score >= 50 ? "text-amber-600" :
+                                              "text-red-600"
+                                            }`}>{dim.score}</span>
+                                          </div>
+                                        </div>
+                                        {/* Dimension explanation + findings */}
+                                        <div className="px-3 pb-2 space-y-1.5">
+                                          <p className="text-[11px] text-muted-foreground">{dim.explanation}</p>
+                                          {dim.findings.map((f, fi) => (
+                                            <div key={fi} className={`flex items-start gap-2 text-[11px] px-2 py-1.5 rounded ${
+                                              f.severity === "risk" ? "bg-red-50 text-red-700" :
+                                              f.severity === "warning" ? "bg-amber-50 text-amber-700" :
+                                              "bg-slate-50 text-slate-600"
+                                            }`}>
+                                              <span className="shrink-0 mt-0.5">
+                                                {f.severity === "risk" ? <TriangleAlert className="h-3 w-3" /> :
+                                                 f.severity === "warning" ? <AlertTriangle className="h-3 w-3" /> :
+                                                 <Info className="h-3 w-3" />}
+                                              </span>
+                                              <div className="flex-1 min-w-0">
+                                                <span>{f.text}</span>
+                                                <span className="ml-1.5 text-[9px] font-medium uppercase tracking-wider opacity-60">{f.source}</span>
+                                              </div>
+                                              {f.cta && (
+                                                <button
+                                                  onClick={() => {
+                                                    setFollowUpInput(f.text);
+                                                    setTimeout(() => followUpInputRef.current?.focus(), 50);
+                                                  }}
+                                                  className="shrink-0 text-[10px] font-medium text-purple-600 hover:text-purple-700"
+                                                >
+                                                  {f.cta}
+                                                </button>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+
+                            {/* Follow-up response */}
+                            {followUpResponse !== null && (
+                              <div className="px-4 pb-2">
+                                <div className="pt-2 border-t border-purple-200">
+                                  <div className="flex items-center gap-1.5 mb-1.5">
+                                    <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+                                    <span className="text-xs font-semibold text-purple-700">Follow-up</span>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {followUpResponse.map((line, i) => (
+                                      <div key={i} className="flex items-start gap-2 text-xs text-purple-700">
+                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-purple-400 shrink-0" />
+                                        <span>{line}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Follow-up loading skeleton */}
+                            {isFollowingUp && (
+                              <div className="px-4 pb-3">
+                                <div className="pt-2 border-t border-purple-200 space-y-2 animate-pulse">
+                                  <div className="h-3 rounded bg-purple-200 w-3/4" />
+                                  <div className="h-3 rounded bg-purple-200 w-1/2" />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Follow-up input — always visible */}
+                            {!isFollowingUp && (
+                              <div className="px-4 pb-3">
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    ref={followUpInputRef}
+                                    value={followUpInput}
+                                    onChange={(e) => setFollowUpInput(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === "Enter") handleFollowUp(); }}
+                                    placeholder={followUpPlaceholders[placeholderIndex % followUpPlaceholders.length]}
+                                    className="flex-1 text-xs px-2.5 py-1.5 rounded-md border border-purple-300 bg-white text-purple-900 placeholder-purple-300 focus:outline-none focus:ring-1 focus:ring-purple-400 transition-colors"
+                                  />
+                                  <button
+                                    onClick={handleFollowUp}
+                                    disabled={!followUpInput.trim()}
+                                    className="flex items-center justify-center h-7 w-7 rounded-md bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white transition-colors"
+                                  >
+                                    <Send className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+
+                    {/* Requirements badge — shown in attached files header when unmet */}
+                    {(() => {
+                      const allMet = analysisResult!.checklist.every((c) => c.status === "found");
+                      const unmetCount = analysisResult!.checklist.filter((c) => c.status !== "found").length;
+                      if (!allMet) {
+                        return (
+                          <div className="px-4 py-2 border-b border-border bg-amber-50/50">
+                            <Badge variant="warning" className="gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              {unmetCount} requirement{unmetCount > 1 ? "s" : ""} need{unmetCount === 1 ? "s" : ""} action
+                            </Badge>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
+                    {/* Attached files */}
+                    <div className="px-4 py-3 border-b border-border">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                          Attached Files
+                        </span>
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                        >
+                          <Upload className="h-3 w-3" />
+                          Add files
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {files.map((f) => (
+                          <div
+                            key={f.id}
+                            className="group relative flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted text-sm transition-colors hover:bg-destructive-surface hover:pr-8"
+                          >
+                            <Paperclip className="h-3 w-3 text-muted-foreground group-hover:text-destructive-text shrink-0" />
+                            <span className="truncate max-w-[150px] text-foreground group-hover:text-destructive-text">{f.name}</span>
+                            <button
+                              onClick={() => setFiles(files.filter((file) => file.id !== f.id))}
+                              className="absolute right-2 hidden group-hover:flex items-center justify-center text-destructive-text hover:text-destructive"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Requirements checklist */}
+                    <div className="px-4 py-3">
+                      {(() => {
+                        const allMet = analysisResult!.checklist.every((c) => c.status === "found");
+                        return (
+                          <>
+                            <button
+                              onClick={() => setRequirementsExpanded(!requirementsExpanded)}
+                              className="w-full flex items-center justify-between"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                  Special Instructions
+                                </span>
+                                {allMet && (
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-success-foreground" />
+                                )}
+                              </div>
+                              <ChevronDown
+                                className={`h-4 w-4 text-muted-foreground transition-transform ${
+                                  requirementsExpanded ? "rotate-180" : ""
+                                }`}
+                              />
+                            </button>
+
+                            {requirementsExpanded && (
+                              <div className="mt-3 space-y-2">
+                                <p className="text-xs text-muted-foreground">
+                                  AI verified your documents against {gcName}&apos;s requirements
+                                </p>
+                                {analysisResult!.checklist.map((item) => {
+                                  const config = statusConfig[item.status];
+                                  const Icon = config.icon;
+                                  const help = requirementHelp[item.id];
+                                  const isUnmet = item.status === "needs-action" || item.status === "missing";
+                                  const isHelpOpen = helpExpandedId === item.id;
+                                  return (
+                                    <div key={item.id}>
+                                      <div className="flex items-start gap-3 p-3 rounded-[8px] bg-muted">
+                                        <Icon
+                                          className={`h-5 w-5 shrink-0 mt-0.5 ${config.color}`}
+                                        />
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-sm font-medium text-foreground">
+                                              {item.label}
+                                            </span>
+                                            <Badge variant={config.badgeVariant}>
+                                              {config.label}
+                                            </Badge>
+                                          </div>
+                                          <p className="text-xs text-muted-foreground mt-0.5">
+                                            {item.detail}
+                                          </p>
+                                        </div>
+                                        {isUnmet && help && (
+                                          <button
+                                            onClick={() =>
+                                              setHelpExpandedId(isHelpOpen ? null : item.id)
+                                            }
+                                            className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                                              isHelpOpen
+                                                ? "bg-warning-surface text-warning-foreground"
+                                                : "bg-warning-surface/60 text-warning-foreground hover:bg-warning-surface"
+                                            }`}
+                                          >
+                                            <Lightbulb className="h-3 w-3" />
+                                            Help
+                                          </button>
+                                        )}
+                                      </div>
+                                      {/* Expandable help guidance */}
+                                      {isHelpOpen && help && (
+                                        <div className="mt-1 ml-8 rounded-[8px] border border-warning-border bg-warning-surface/30 p-4">
+                                          <div className="flex items-center gap-2 mb-3">
+                                            <Lightbulb className="h-4 w-4 text-warning-foreground" />
+                                            <span className="text-sm font-semibold text-foreground">
+                                              {help.title}
+                                            </span>
+                                          </div>
+                                          <div className="space-y-2.5">
+                                            {help.steps.map((s, i) => (
+                                              <div key={i} className="flex items-start gap-2.5">
+                                                <span className="h-5 w-5 rounded-full bg-warning-surface flex items-center justify-center shrink-0 text-[11px] font-bold text-warning-foreground">
+                                                  {i + 1}
+                                                </span>
+                                                <span className="text-sm text-foreground leading-snug">
+                                                  {s}
+                                                </span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                          <div className="mt-3 rounded-md bg-warning-surface/60 p-2.5 flex items-start gap-2">
+                                            <ArrowRight className="h-3.5 w-3.5 text-warning-foreground shrink-0 mt-0.5" />
+                                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                              {help.tip}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </>
+                  )}
+                  </div>
+
+                  {/* Trade Breakdown */}
+                  {isLoading ? (
+                    <div>
+                      <Label className="text-sm font-medium">Trade Breakdown</Label>
+                      <div className="mt-1.5 rounded-[8px] border border-border">
+                        {[0, 1, 2, 3].map((i) => (
+                          <div key={i} className={`flex justify-between p-3 ${i > 0 ? "border-t border-border" : ""}`}>
+                            <Skeleton className="h-4 w-32" />
+                            <Skeleton className="h-4 w-20" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {analysisResult && analysisResult.extractedData.tradeBreakdown.length > 0 && (
+                    <div>
+                      <Label className="text-sm font-medium">
+                        Trade Breakdown
+                      </Label>
+                      <div className="mt-1.5 rounded-[8px] border border-border">
+                        {analysisResult.extractedData.tradeBreakdown.map(
+                          (item, i) => (
+                            <div
+                              key={i}
+                              className={`flex justify-between p-3 text-sm ${
+                                i > 0 ? "border-t border-border" : ""
+                              }`}
+                            >
+                              <span className="text-foreground">{item.trade}</span>
+                              <span className="font-medium text-foreground">{item.amount}</span>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <Separator />
+
+                  {/* Share toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        Share with future GCs
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Allow other GCs to see your bid profile
+                      </p>
+                    </div>
+                    <Switch
+                      checked={shareWithGCs}
+                      onCheckedChange={setShareWithGCs}
+                    />
                   </div>
                 </div>
+              </div>
 
-                <Separator />
-
-                {/* Share toggle */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
-                      Share with future GCs
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Allow other GCs to see your bid profile
-                    </p>
-                  </div>
-                  <Switch
-                    checked={shareWithGCs}
-                    onCheckedChange={setShareWithGCs}
-                  />
+              {/* Sticky footer */}
+              <div className="sticky bottom-0 border-t border-border bg-card px-6 py-3 flex items-center justify-between z-10">
+                <div className="flex items-center gap-3">
+                  {!isEmailConnected ? (
+                    <>
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <Building2 className="h-4 w-4" />
+                        <span>In-App Only</span>
+                      </div>
+                      <button
+                        onClick={handleConnectEmail}
+                        disabled={isConnectingEmail}
+                        className="text-sm font-medium text-primary hover:underline disabled:opacity-50"
+                      >
+                        {isConnectingEmail ? "Connecting..." : "Connect email"}
+                      </button>
+                    </>
+                  ) : (
+                    <div className="relative group">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-success-surface text-primary text-sm font-medium">
+                          <Mail className="h-3.5 w-3.5" />
+                          Email + In-App
+                        </span>
+                        <span className="text-sm text-muted-foreground">
+                          Sending to GC via email and in-app
+                        </span>
+                      </div>
+                      {/* Tooltip */}
+                      <div className="absolute bottom-full left-0 mb-2 w-72 p-3 rounded-lg bg-foreground text-background text-xs leading-relaxed shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all pointer-events-none z-50">
+                        GCs will receive your bid both in PlanHub and directly in their inbox as an email sent from you.
+                        <div className="absolute top-full left-6 h-0 w-0 border-x-[6px] border-x-transparent border-t-[6px] border-t-foreground" />
+                      </div>
+                    </div>
+                  )}
                 </div>
-
-                {/* Action buttons */}
-                <div className="flex gap-3 pt-2">
+                <div className="flex items-center gap-3">
                   <Button
                     variant="outline"
-                    className="flex-1"
-                    onClick={() => setStep("upload")}
+                    onClick={() => { setStep("upload"); setBidScore(null); setScoreBreakdownOpen(false); setIsImprovingBid(false); setFollowUpInput(""); setIsFollowingUp(false); setFollowUpResponse(null); }}
                   >
                     Back
                   </Button>
-                  <Button className="flex-1" onClick={handleSubmit}>
-                    <Send className="mr-2 h-4 w-4" />
-                    Submit Bid
+                  <Button onClick={handleSubmit} disabled={isLoading}>
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="mr-2 h-4 w-4" />
+                        Submit Bid
+                      </>
+                    )}
                   </Button>
                 </div>
               </div>

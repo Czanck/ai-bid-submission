@@ -48,6 +48,30 @@ export interface AnalyzeBidResponse {
 
 export type ModalStep = "upload" | "processing" | "review" | "submitted";
 
+export interface BidFinding {
+  text: string;
+  severity: "info" | "warning" | "risk";
+  source: string;
+  cta?: string;
+}
+
+export interface ScoreDimension {
+  name: string;
+  score: number;
+  explanation: string;
+  findings: BidFinding[];
+}
+
+export interface BidReadinessScore {
+  score: number;
+  status: "ready" | "needs-review" | "high-risk";
+  confidence: "high" | "medium" | "low";
+  confidenceNote?: string;
+  summary: string;
+  dimensions: ScoreDimension[];
+  promptChips: string[];
+}
+
 export interface UploadedFile {
   file: File;
   id: string;

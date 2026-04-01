@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 import { Upload } from "lucide-react"
 
 interface SubmitBidModalProps {
@@ -53,7 +54,7 @@ export function SubmitBidModal({ open, onOpenChange }: SubmitBidModalProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-900">
+          <DialogTitle className="text-xl font-semibold text-foreground">
             Submit Bid
           </DialogTitle>
         </DialogHeader>
@@ -65,39 +66,39 @@ export function SubmitBidModal({ open, onOpenChange }: SubmitBidModalProps) {
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
             className={`
-              flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed
+              flex flex-col items-center justify-center gap-4 rounded-[8px] border-2 border-dashed
               px-6 py-12 cursor-pointer transition-colors
               ${isDragging
-                ? "border-emerald-400 bg-emerald-50"
-                : "border-gray-300 bg-white hover:border-gray-400"
+                ? "border-success-border bg-success-surface"
+                : "border-border bg-card hover:border-muted-foreground"
               }
             `}
           >
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
-              <Upload className="h-7 w-7 text-gray-400" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+              <Upload className="h-7 w-7 text-muted-foreground" />
             </div>
 
             <div className="text-center">
-              <p className="text-lg font-semibold text-gray-800">
+              <p className="text-lg font-semibold text-foreground">
                 Drop your bid files here
               </p>
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-1 text-sm text-muted-foreground">
                 or click to browse from your computer
               </p>
             </div>
 
-            <button
+            <Button
               type="button"
-              className="rounded-lg bg-emerald-400 px-8 py-3 text-base font-semibold text-white transition-colors hover:bg-emerald-500"
+              size="lg"
               onClick={(e) => {
                 e.stopPropagation()
                 fileInputRef.current?.click()
               }}
             >
               Browse Files
-            </button>
+            </Button>
 
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-muted-foreground">
               Supported formats: PDF, DOC, DOCX, XLS, XLSX, CSV
             </p>
           </div>

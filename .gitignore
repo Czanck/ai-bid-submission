@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Large project PDF files (context extracted into src/data/project-context.ts)
+/public/project-files/
+
 # dependencies
 /node_modules
 /.pnp

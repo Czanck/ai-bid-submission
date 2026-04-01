@@ -3,7 +3,9 @@ import OpenAI from "openai";
 import {
   getInstructionsPromptBlock,
   specialInstructions,
+  specialInstructions2,
 } from "@/lib/special-instructions";
+import { project1Context, project2Context } from "@/data/project-context";
 import type { AnalyzeBidResponse, RequirementCheck } from "@/lib/types";
 
 // Increase body size limit for file uploads (Next.js App Router)
@@ -63,6 +65,9 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
+    const projectId = (formData.get("projectId") as string) || "project1";
+    const activeInstructions = projectId === "project2" ? specialInstructions2 : specialInstructions;
+    const projectContextText = projectId === "project2" ? project2Context : project1Context;
 
     if (!files || files.length === 0) {
       return NextResponse.json(
@@ -128,15 +133,20 @@ export async function POST(request: Request) {
       documentText = documentText.substring(0, maxTextLength) + "\n[...truncated]";
     }
 
-    const systemPrompt = `You are a construction bid document analyzer. You extract structured data from bid submissions and evaluate compliance against project special instructions/requirements.
+    const systemPrompt = `You are a construction bid document analyzer. You extract structured data from bid submissions and evaluate compliance against real project requirements and special instructions.
+
+You have access to the actual project scope and specifications. Compare the submitted bid against these project details to identify coverage gaps, mismatches, or missing items.
 
 Return ONLY valid JSON matching the exact schema provided. Use empty strings "" for missing text fields and false for missing boolean fields. Never add commentary outside the JSON object.`;
 
-    const userPromptText = `=== DOCUMENT TEXT ===
+    const userPromptText = `=== PROJECT SCOPE & SPECIFICATIONS ===
+${projectContextText}
+
+=== SUBMITTED BID DOCUMENT TEXT ===
 ${documentText || "[No text content - analyze the attached images]"}
 
 === PROJECT SPECIAL INSTRUCTIONS TO VERIFY ===
-${getInstructionsPromptBlock()}
+${getInstructionsPromptBlock(activeInstructions)}
 
 === TASK ===
 1. Extract all bid information from the document into the JSON structure below.
@@ -204,8 +214,18 @@ ${getInstructionsPromptBlock()}
     const checklistMap = new Map(
       (parsed.checklist || []).map((c) => [c.id, c])
     );
-    const fullChecklist: RequirementCheck[] = specialInstructions.map(
+    const fullChecklist: RequirementCheck[] = activeInstructions.map(
       (inst) => {
+        // submit-via-planhub is always met — the user is literally submitting through PlanHub
+        if (inst.id === "submit-via-planhub") {
+          return {
+            id: inst.id,
+            label: "Submit via PlanHub",
+            description: inst.requirement,
+            status: "found" as const,
+            detail: "Bid is being submitted through PlanHub",
+          };
+        }
         const existing = checklistMap.get(inst.id);
         if (existing) return existing;
         return {
