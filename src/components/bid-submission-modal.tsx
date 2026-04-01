@@ -94,16 +94,6 @@ const requirementHelp: Record<string, { title: string; steps: string[]; tip: str
     ],
     tip: "Try calling during business hours (8 AM – 5 PM). If you can't reach anyone, leave a voicemail with your company name and callback number.",
   },
-  "general-liability": {
-    title: "How to provide insurance documentation",
-    steps: [
-      "Contact your insurance provider to request a Certificate of Insurance (COI)",
-      "Ensure the COI shows at least $2,000,000 in general liability coverage",
-      "Have the certificate list the General Contractor as an additional insured",
-      "Attach the COI as a separate document with your bid submission",
-    ],
-    tip: "Most insurers can issue a COI within 24 hours. If your current coverage is below $2M, ask about an umbrella policy.",
-  },
   "submit-via-planhub": {
     title: "How to submit through PlanHub",
     steps: [
@@ -495,13 +485,13 @@ export function BidSubmissionModal({
           },
           messageTemplate: "Dear Turner Construction,\n\nPlease find attached our bid for the City Center Office Complex - Phase 2 project.\n\nTotal Bid Amount: $1,250,000\n\nBest regards",
           checklist: [
-            { id: "general-liability", label: "Insurance Certificate", description: "$2M general liability insurance", status: "needs-action" as const, detail: "$2M liability certificate not found" },
+            { id: "submit-via-planhub", label: "Submit via PlanHub", description: "Please submit all bids through PlanHub", status: "found" as const, detail: "Bid is being submitted through PlanHub" },
           ],
           confidence: 0.92,
         });
         setBidAmount("$1,250,000");
         setMessageBody("Dear Turner Construction,\n\nPlease find attached our bid.\n\nBest regards");
-        setRequirementsExpanded(true);
+        setRequirementsExpanded(false);
       }
       setIsAnalyzing(false);
 
