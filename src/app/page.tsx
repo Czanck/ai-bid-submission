@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BidSubmissionModal } from "@/components/bid-submission-modal";
+import { BidBoard } from "@/components/bid-board";
 import { PlanHubShell } from "@/components/planhub-shell";
 import { dummyProject, project2, gcList, gcList2 } from "@/data/dummy-project";
 import {
@@ -69,12 +70,16 @@ export default function Home() {
   const [showAllTrades, setShowAllTrades] = useState(false);
   const [gcExpanded, setGcExpanded] = useState<string | null>(null);
   const [activeProject, setActiveProject] = useState<"project1" | "project2">("project1");
+  const [activeView, setActiveView] = useState<"project" | "bidboard">("project");
 
   const currentProject = activeProject === "project1" ? dummyProject : project2;
   const currentGcList = activeProject === "project1" ? gcList : gcList2;
 
   const handleNavClick = (navId: string) => {
-    if (navId === "project1" || navId === "project2") {
+    if (navId === "bidboard") {
+      setActiveView("bidboard");
+    } else if (navId === "project1" || navId === "project2") {
+      setActiveView("project");
       setActiveProject(navId);
       setActiveTab("overview");
       setShowAllTrades(false);
@@ -101,7 +106,24 @@ export default function Home() {
   );
 
   return (
-    <PlanHubShell footer={footer} onNavClick={handleNavClick} activeProject={activeProject}>
+    <PlanHubShell
+      footer={activeView === "project" ? footer : undefined}
+      onNavClick={handleNavClick}
+      activeProject={activeView === "project" ? activeProject : undefined}
+      activeView={activeView}
+    >
+      {activeView === "bidboard" ? (
+        <BidBoard
+          onProjectClick={(projectId) => {
+            setActiveProject(projectId);
+            setActiveView("project");
+            setActiveTab("overview");
+            setShowAllTrades(false);
+            setGcExpanded(null);
+          }}
+        />
+      ) : (
+      <>
       {/* Project Header */}
       <div className="bg-card border-b border-border px-6 py-3">
         <div className="flex items-center justify-between">
@@ -395,6 +417,8 @@ export default function Home() {
         gcEmail={currentGcList[0].email}
         projectId={activeProject}
       />
+      </>
+      )}
     </PlanHubShell>
   );
 }

@@ -64,11 +64,13 @@ export function PlanHubShell({
   footer,
   onNavClick,
   activeProject,
+  activeView,
 }: {
   children: React.ReactNode;
   footer?: React.ReactNode;
   onNavClick?: (navId: string) => void;
   activeProject?: string;
+  activeView?: string;
 }) {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -103,7 +105,7 @@ export function PlanHubShell({
               key={item.label}
               item={{
                 ...item,
-                active: item.navId ? item.navId === activeProject : (item as { active?: boolean }).active,
+                active: item.navId ? item.navId === activeProject || item.navId === activeView : (item as { active?: boolean }).active,
               }}
               onClick={onNavClick}
             />
@@ -122,7 +124,7 @@ export function PlanHubShell({
               key={item.label}
               item={{
                 ...item,
-                active: item.navId ? item.navId === activeProject : (item as { active?: boolean }).active,
+                active: item.navId ? item.navId === activeProject || item.navId === activeView : (item as { active?: boolean }).active,
               }}
               onClick={onNavClick}
             />

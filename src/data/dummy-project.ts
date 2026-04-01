@@ -25,29 +25,30 @@ export const dummyProject = {
 };
 
 export const project2 = {
-  id: "726TX2081",
-  name: "Riverside Medical Center - Electrical Retrofit",
+  id: "3445",
+  name: "The Boulevard Retail — Core & Shell",
   dueDate: "04/10/2026",
   description:
-    "Full electrical system retrofit for a 4-story, 86,400 SF medical office building including panel upgrades, emergency generator tie-ins, and nurse call system replacement.",
-  location: "2200 WESTLAKE DR Austin, TX 78746",
-  projectValue: "$2,350,424.00",
-  projectSize: "86,400.00 SF",
+    "New construction of retail shell buildings (Buildings 3 & 4) with two future tenant spaces (~3,600 SF and ~1,500 SF). Scope includes site work, structure, MEP core, storefront, roofing, and full electrical service for each tenant.",
+  location: "13001 BASS LAKE ROAD Plymouth, MN 55441",
+  projectValue: "$4,200,000.00",
+  projectSize: "5,100.00 SF",
   startDate: "06/15/2026",
   endDate: "02/28/2027",
   status: "GC and Sub Bidding",
   constructionType: "Private / Commercial",
-  projectType: "Renovation / Retrofit",
-  buildingUse: "Medical Office",
+  projectType: "New Construction",
+  buildingUse: "Retail",
   sectorLaborStatus: "Open Shop",
   trades: [
     "Electrical Power",
     "Electrical Wiring / Installation",
     "Fire Alarm",
     "Low Voltage / Data",
-    "Emergency Generator",
+    "HVAC",
+    "Plumbing",
   ],
-  totalTrades: 23,
+  totalTrades: 42,
 };
 
 export const dummyUser = {
@@ -95,7 +96,7 @@ export const navItems = {
   workspace: [
     { label: "Network", icon: "Globe", href: "#" },
     { label: "Burlington #01689", icon: "Search", href: "#", active: true, navId: "project1" },
-    { label: "Bid Board", icon: "ClipboardList", href: "#" },
+    { label: "Bid Board", icon: "ClipboardList", href: "#", navId: "bidboard" },
     { label: "Takeoff", icon: "Ruler", href: "#" },
     { label: "Job Board", icon: "Briefcase", href: "#" },
   ],
