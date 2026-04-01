@@ -70,7 +70,7 @@ export default function Home() {
   const [showAllTrades, setShowAllTrades] = useState(false);
   const [gcExpanded, setGcExpanded] = useState<string | null>(null);
   const [activeProject, setActiveProject] = useState<"project1" | "project2">("project1");
-  const [activeView, setActiveView] = useState<"project" | "bidboard">("project");
+  const [activeView, setActiveView] = useState<"project" | "bidboard">("bidboard");
 
   const currentProject = activeProject === "project1" ? dummyProject : project2;
   const currentGcList = activeProject === "project1" ? gcList : gcList2;
