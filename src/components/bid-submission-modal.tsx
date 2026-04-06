@@ -1305,10 +1305,10 @@ export function BidSubmissionModal({
                                                     return next;
                                                   });
                                                 }}
-                                                className={`mt-2 inline-flex items-center gap-1.5 text-[10px] font-medium px-2.5 py-1 rounded-full transition-colors ${
+                                                className={`mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md border shadow-sm transition-colors ${
                                                   isOverridden
-                                                    ? "bg-muted text-muted-foreground hover:bg-red-50 hover:text-red-600"
-                                                    : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                                                    ? "border-border bg-white text-muted-foreground hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                                                    : "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
                                                 }`}
                                               >
                                                 {isOverridden ? (
