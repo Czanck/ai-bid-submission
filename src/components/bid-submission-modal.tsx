@@ -1247,13 +1247,7 @@ export function BidSubmissionModal({
                                       return (
                                       <div
                                         key={i}
-                                        className={`rounded-lg border px-3 py-2.5 transition-colors ${
-                                          effectiveStatus === "aligned"
-                                            ? "border-emerald-200 bg-emerald-50/50"
-                                            : effectiveStatus === "misaligned"
-                                            ? "border-red-200 bg-red-50/50"
-                                            : "border-amber-200 bg-amber-50/50"
-                                        }`}
+                                        className="rounded-lg border border-border bg-card px-3 py-2.5 transition-colors"
                                       >
                                         <div className="flex items-start gap-2.5">
                                           <span className="shrink-0 mt-0.5">
