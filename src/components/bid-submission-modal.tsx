@@ -186,6 +186,7 @@ export function BidSubmissionModal({
   const [isReadinessChecking, setIsReadinessChecking] = useState(false);
   const [readinessCheck, setReadinessCheck] = useState<BidReadinessCheck | null>(null);
   const [readinessExpanded, setReadinessExpanded] = useState<boolean | null>(null); // null = unset, will default based on result
+  const [readinessOverrides, setReadinessOverrides] = useState<Set<number>>(new Set()); // indices of items manually marked aligned
   const [requirementsExpanded, setRequirementsExpanded] = useState(true);
   const [messageTemplate, setMessageTemplate] = useState(
     "Dear {{GC Name}},\n\nPlease find attached our bid submission for {{Project Name}}.\n\nBid Summary:\n- Total Bid Amount: {{Bid Amount}}\n\nBest regards,\n{{Your Company}}"
@@ -261,6 +262,7 @@ export function BidSubmissionModal({
           setIsReadinessChecking(false);
           setReadinessCheck(null);
           setReadinessExpanded(null);
+          setReadinessOverrides(new Set());
         }, 300);
       }
       onOpenChange(newOpen);
@@ -1190,23 +1192,31 @@ export function BidSubmissionModal({
                           </div>
                         ) : readinessCheck !== null ? (
                           <div className="bg-purple-50/30">
-                            {/* Header row */}
-                            <div className="px-4 py-3">
-                              <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-bold text-foreground">Bid Readiness Check</h3>
-                                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${
-                                  readinessCheck.result === "looks-good"
-                                    ? "bg-emerald-100 text-emerald-700"
-                                    : "bg-red-100 text-red-700"
-                                }`}>
-                                  {readinessCheck.result === "looks-good" ? (
-                                    <><CheckCircle2 className="h-3.5 w-3.5" /> Looks Good</>
-                                  ) : (
-                                    <><ShieldAlert className="h-3.5 w-3.5" /> Needs Review</>
-                                  )}
-                                </span>
-                              </div>
-                            </div>
+                            {/* Header row — recompute status based on overrides */}
+                            {(() => {
+                              const hasUnresolved = readinessCheck.items.some(
+                                (item, i) => !readinessOverrides.has(i) && (item.status === "misaligned" || item.status === "missing")
+                              );
+                              const effectiveResult = hasUnresolved ? "needs-review" : "looks-good";
+                              return (
+                                <div className="px-4 py-3">
+                                  <div className="flex items-center justify-between">
+                                    <h3 className="text-lg font-bold text-foreground">Bid Readiness Check</h3>
+                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                                      effectiveResult === "looks-good"
+                                        ? "bg-emerald-100 text-emerald-700"
+                                        : "bg-red-100 text-red-700"
+                                    }`}>
+                                      {effectiveResult === "looks-good" ? (
+                                        <><CheckCircle2 className="h-3.5 w-3.5" /> Looks Good</>
+                                      ) : (
+                                        <><ShieldAlert className="h-3.5 w-3.5" /> Needs Review</>
+                                      )}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
 
                             {/* Accordion: scope check breakdown */}
                             <div className="px-4 pb-1">
@@ -1231,42 +1241,48 @@ export function BidSubmissionModal({
                                   className="overflow-hidden"
                                 >
                                   <div className="px-4 pb-3 space-y-2">
-                                    {readinessCheck.items.map((item, i) => (
+                                    {readinessCheck.items.map((item, i) => {
+                                      const isOverridden = readinessOverrides.has(i);
+                                      const effectiveStatus = isOverridden ? "aligned" : item.status;
+                                      return (
                                       <div
                                         key={i}
-                                        className={`rounded-lg border px-3 py-2.5 ${
-                                          item.status === "aligned"
+                                        className={`rounded-lg border px-3 py-2.5 transition-colors ${
+                                          effectiveStatus === "aligned"
                                             ? "border-emerald-200 bg-emerald-50/50"
-                                            : item.status === "misaligned"
+                                            : effectiveStatus === "misaligned"
                                             ? "border-red-200 bg-red-50/50"
                                             : "border-amber-200 bg-amber-50/50"
                                         }`}
                                       >
                                         <div className="flex items-start gap-2.5">
                                           <span className="shrink-0 mt-0.5">
-                                            {item.status === "aligned" ? (
+                                            {effectiveStatus === "aligned" ? (
                                               <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                                            ) : item.status === "misaligned" ? (
+                                            ) : effectiveStatus === "misaligned" ? (
                                               <XCircle className="h-4 w-4 text-red-600" />
                                             ) : (
                                               <AlertTriangle className="h-4 w-4 text-amber-600" />
                                             )}
                                           </span>
                                           <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
                                               <span className="text-xs font-semibold text-foreground">{item.trade}</span>
-                                              <span className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                                                item.status === "aligned"
+                                              <span className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded transition-colors ${
+                                                effectiveStatus === "aligned"
                                                   ? "bg-emerald-100 text-emerald-700"
-                                                  : item.status === "misaligned"
+                                                  : effectiveStatus === "misaligned"
                                                   ? "bg-red-100 text-red-700"
                                                   : "bg-amber-100 text-amber-700"
                                               }`}>
-                                                {item.status === "aligned" ? "Aligned" : item.status === "misaligned" ? "Misaligned" : "Missing"}
+                                                {effectiveStatus === "aligned" ? "Aligned" : effectiveStatus === "misaligned" ? "Misaligned" : "Missing"}
                                               </span>
+                                              {isOverridden && (
+                                                <span className="text-[9px] text-muted-foreground italic">manually resolved</span>
+                                              )}
                                             </div>
                                             <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{item.detail}</p>
-                                            {item.fix && (
+                                            {!isOverridden && item.fix && (
                                               <div className="mt-1.5 rounded-md bg-white/80 border border-red-100 px-2.5 py-2">
                                                 <div className="flex items-center gap-1.5 mb-1">
                                                   <Lightbulb className="h-3 w-3 text-red-500" />
@@ -1275,10 +1291,38 @@ export function BidSubmissionModal({
                                                 <p className="text-[11px] text-red-700 leading-snug">{item.fix}</p>
                                               </div>
                                             )}
+                                            {/* Mark as Aligned / Undo */}
+                                            {item.status !== "aligned" && (
+                                              <button
+                                                onClick={() => {
+                                                  setReadinessOverrides((prev) => {
+                                                    const next = new Set(prev);
+                                                    if (next.has(i)) {
+                                                      next.delete(i);
+                                                    } else {
+                                                      next.add(i);
+                                                    }
+                                                    return next;
+                                                  });
+                                                }}
+                                                className={`mt-2 inline-flex items-center gap-1.5 text-[10px] font-medium px-2.5 py-1 rounded-full transition-colors ${
+                                                  isOverridden
+                                                    ? "bg-muted text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                                                    : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                                                }`}
+                                              >
+                                                {isOverridden ? (
+                                                  <><X className="h-3 w-3" /> Undo</>
+                                                ) : (
+                                                  <><CheckCircle2 className="h-3 w-3" /> Mark as Aligned</>
+                                                )}
+                                              </button>
+                                            )}
                                           </div>
                                         </div>
                                       </div>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 </motion.div>
                               )}
@@ -1846,7 +1890,7 @@ export function BidSubmissionModal({
                 <div className="flex items-center gap-3">
                   <Button
                     variant="outline"
-                    onClick={() => { setStep("upload"); setBidScore(null); setScoreBreakdownOpen(false); setIsImprovingBid(false); setFollowUpInput(""); setIsFollowingUp(false); setFollowUpResponse(null); setIsReadinessChecking(false); setReadinessCheck(null); setReadinessExpanded(null); }}
+                    onClick={() => { setStep("upload"); setBidScore(null); setScoreBreakdownOpen(false); setIsImprovingBid(false); setFollowUpInput(""); setIsFollowingUp(false); setFollowUpResponse(null); setIsReadinessChecking(false); setReadinessCheck(null); setReadinessExpanded(null); setReadinessOverrides(new Set()); }}
                   >
                     Back
                   </Button>
