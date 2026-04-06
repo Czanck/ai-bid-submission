@@ -187,6 +187,7 @@ export function BidSubmissionModal({
   const [readinessCheck, setReadinessCheck] = useState<BidReadinessCheck | null>(null);
   const [readinessExpanded, setReadinessExpanded] = useState<boolean | null>(null); // null = unset, will default based on result
   const [readinessOverrides, setReadinessOverrides] = useState<Set<number>>(new Set()); // indices of items manually marked aligned
+  const [proposalSectionOpen, setProposalSectionOpen] = useState(true);
   const [requirementsExpanded, setRequirementsExpanded] = useState(true);
   const [messageTemplate, setMessageTemplate] = useState(
     "Dear {{GC Name}},\n\nPlease find attached our bid submission for {{Project Name}}.\n\nBid Summary:\n- Total Bid Amount: {{Bid Amount}}\n\nBest regards,\n{{Your Company}}"
@@ -263,6 +264,7 @@ export function BidSubmissionModal({
           setReadinessCheck(null);
           setReadinessExpanded(null);
           setReadinessOverrides(new Set());
+          setProposalSectionOpen(true);
         }, 300);
       }
       onOpenChange(newOpen);
@@ -1322,88 +1324,113 @@ export function BidSubmissionModal({
                               )}
                             </AnimatePresence>
 
-                            {/* Writing quality summary */}
-                            {readinessCheck.writingSummary && (
-                              <div className="px-4 pb-3">
-                                <div className="flex items-start gap-2 rounded-lg bg-purple-100/50 border border-purple-200 px-3 py-2.5">
-                                  <Sparkles className="h-3.5 w-3.5 text-purple-500 shrink-0 mt-0.5" />
-                                  <p className="text-xs text-purple-700 leading-relaxed">{readinessCheck.writingSummary}</p>
-                                </div>
-                              </div>
-                            )}
+                            {/* Improve Your Proposal — collapsible section */}
+                            <div className="px-4 pb-1">
+                              <button
+                                onClick={() => setProposalSectionOpen(!proposalSectionOpen)}
+                                className="w-full flex items-center justify-between py-2"
+                              >
+                                <span className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                                  Improve Your Proposal
+                                </span>
+                                <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${proposalSectionOpen ? "rotate-180" : ""}`} />
+                              </button>
+                            </div>
 
-                            {/* Prompt chips */}
-                            {readinessCheck.promptChips.length > 0 && (
-                              <div className="px-4 pb-2">
-                                <div className="flex flex-wrap gap-1.5">
-                                  {readinessCheck.promptChips.map((chip, i) => (
-                                    <button
-                                      key={i}
-                                      onClick={() => {
-                                        setFollowUpInput(chip);
-                                        setTimeout(() => followUpInputRef.current?.focus(), 50);
-                                      }}
-                                      className="text-xs px-2.5 py-1 rounded-full border border-purple-200 text-purple-600 hover:bg-purple-100 hover:border-purple-300 transition-colors"
-                                    >
-                                      {chip}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Follow-up response */}
-                            {followUpResponse !== null && (
-                              <div className="px-4 pb-2">
-                                <div className="pt-2 border-t border-purple-200">
-                                  <div className="flex items-center gap-1.5 mb-1.5">
-                                    <Sparkles className="h-3.5 w-3.5 text-purple-500" />
-                                    <span className="text-sm font-semibold text-purple-700">Follow-up</span>
-                                  </div>
-                                  <div className="space-y-1">
-                                    {followUpResponse.map((line, i) => (
-                                      <div key={i} className="flex items-start gap-2 text-sm text-purple-700">
-                                        <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-purple-400 shrink-0" />
-                                        <span>{line}</span>
+                            <AnimatePresence>
+                              {proposalSectionOpen && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: "auto", opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.2 }}
+                                  className="overflow-hidden"
+                                >
+                                  {/* Writing quality summary */}
+                                  {readinessCheck.writingSummary && (
+                                    <div className="px-4 pb-3">
+                                      <div className="flex items-start gap-2 rounded-lg bg-purple-100/50 border border-purple-200 px-3 py-2.5">
+                                        <Sparkles className="h-3.5 w-3.5 text-purple-500 shrink-0 mt-0.5" />
+                                        <p className="text-xs text-purple-700 leading-relaxed">{readinessCheck.writingSummary}</p>
                                       </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
+                                    </div>
+                                  )}
 
-                            {/* Follow-up loading skeleton */}
-                            {isFollowingUp && (
-                              <div className="px-4 pb-3">
-                                <div className="pt-2 border-t border-purple-200 space-y-2 animate-pulse">
-                                  <div className="h-3 rounded bg-purple-200 w-3/4" />
-                                  <div className="h-3 rounded bg-purple-200 w-1/2" />
-                                </div>
-                              </div>
-                            )}
+                                  {/* Prompt chips */}
+                                  {readinessCheck.promptChips.length > 0 && (
+                                    <div className="px-4 pb-2">
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {readinessCheck.promptChips.map((chip, i) => (
+                                          <button
+                                            key={i}
+                                            onClick={() => {
+                                              setFollowUpInput(chip);
+                                              setTimeout(() => followUpInputRef.current?.focus(), 50);
+                                            }}
+                                            className="text-xs px-2.5 py-1 rounded-full border border-purple-200 text-purple-600 hover:bg-purple-100 hover:border-purple-300 transition-colors"
+                                          >
+                                            {chip}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
 
-                            {/* Follow-up input */}
-                            {!isFollowingUp && (
-                              <div className="px-4 pb-3">
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    ref={followUpInputRef}
-                                    value={followUpInput}
-                                    onChange={(e) => setFollowUpInput(e.target.value)}
-                                    onKeyDown={(e) => { if (e.key === "Enter") handleFollowUp(); }}
-                                    placeholder={readinessCheck.promptChips[placeholderIndex % readinessCheck.promptChips.length] || "Ask about your bid..."}
-                                    className="flex-1 text-sm px-3 py-2 rounded-md border border-purple-300 bg-white text-purple-900 placeholder-purple-300 focus:outline-none focus:ring-1 focus:ring-purple-400 transition-colors"
-                                  />
-                                  <button
-                                    onClick={handleFollowUp}
-                                    disabled={!followUpInput.trim()}
-                                    className="flex items-center justify-center h-7 w-7 rounded-md bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white transition-colors"
-                                  >
-                                    <Send className="h-3 w-3" />
-                                  </button>
-                                </div>
-                              </div>
-                            )}
+                                  {/* Follow-up response */}
+                                  {followUpResponse !== null && (
+                                    <div className="px-4 pb-2">
+                                      <div className="pt-2 border-t border-purple-200">
+                                        <div className="flex items-center gap-1.5 mb-1.5">
+                                          <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+                                          <span className="text-sm font-semibold text-purple-700">Follow-up</span>
+                                        </div>
+                                        <div className="space-y-1">
+                                          {followUpResponse.map((line, i) => (
+                                            <div key={i} className="flex items-start gap-2 text-sm text-purple-700">
+                                              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-purple-400 shrink-0" />
+                                              <span>{line}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Follow-up loading skeleton */}
+                                  {isFollowingUp && (
+                                    <div className="px-4 pb-3">
+                                      <div className="pt-2 border-t border-purple-200 space-y-2 animate-pulse">
+                                        <div className="h-3 rounded bg-purple-200 w-3/4" />
+                                        <div className="h-3 rounded bg-purple-200 w-1/2" />
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Follow-up input */}
+                                  {!isFollowingUp && (
+                                    <div className="px-4 pb-3">
+                                      <div className="flex items-center gap-2">
+                                        <input
+                                          ref={followUpInputRef}
+                                          value={followUpInput}
+                                          onChange={(e) => setFollowUpInput(e.target.value)}
+                                          onKeyDown={(e) => { if (e.key === "Enter") handleFollowUp(); }}
+                                          placeholder={readinessCheck.promptChips[placeholderIndex % readinessCheck.promptChips.length] || "Ask about your bid..."}
+                                          className="flex-1 text-sm px-3 py-2 rounded-md border border-purple-300 bg-white text-purple-900 placeholder-purple-300 focus:outline-none focus:ring-1 focus:ring-purple-400 transition-colors"
+                                        />
+                                        <button
+                                          onClick={handleFollowUp}
+                                          disabled={!followUpInput.trim()}
+                                          className="flex items-center justify-center h-8 w-8 rounded-md bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white transition-colors"
+                                        >
+                                          <Send className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
                           </div>
                         ) : null}
                       </div>
@@ -1884,7 +1911,7 @@ export function BidSubmissionModal({
                 <div className="flex items-center gap-3">
                   <Button
                     variant="outline"
-                    onClick={() => { setStep("upload"); setBidScore(null); setScoreBreakdownOpen(false); setIsImprovingBid(false); setFollowUpInput(""); setIsFollowingUp(false); setFollowUpResponse(null); setIsReadinessChecking(false); setReadinessCheck(null); setReadinessExpanded(null); setReadinessOverrides(new Set()); }}
+                    onClick={() => { setStep("upload"); setBidScore(null); setScoreBreakdownOpen(false); setIsImprovingBid(false); setFollowUpInput(""); setIsFollowingUp(false); setFollowUpResponse(null); setIsReadinessChecking(false); setReadinessCheck(null); setReadinessExpanded(null); setReadinessOverrides(new Set()); setProposalSectionOpen(true); }}
                   >
                     Back
                   </Button>
