@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BidSubmissionModal } from "@/components/bid-submission-modal";
 import { BidBoard } from "@/components/bid-board";
+import { ImportProjectModal } from "@/components/import-project-modal";
 import { PlanHubShell } from "@/components/planhub-shell";
 import { dummyProject, project2, gcList, gcList2 } from "@/data/dummy-project";
+import { getAllProjects } from "@/lib/project-store";
+import type { StoredProject } from "@/lib/types";
 import {
   Calendar,
   Sparkles,
@@ -72,15 +75,33 @@ export default function Home() {
   const [activeProject, setActiveProject] = useState<"project1" | "project2">("project1");
   const [activeView, setActiveView] = useState<"project" | "bidboard">("bidboard");
 
+  // Dynamic (imported) projects
+  const [storedProjects, setStoredProjects] = useState<StoredProject[]>([]);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [dynamicProject, setDynamicProject] = useState<StoredProject | null>(null);
+
+  // Load stored projects from IndexedDB on mount
+  useEffect(() => {
+    getAllProjects().then(setStoredProjects).catch(console.error);
+  }, []);
+
+  const isDynamic = dynamicProject !== null && activeView === "project" && activeProject !== "project1" && activeProject !== "project2";
+
+  // For hardcoded projects
   const currentProject = activeProject === "project1" ? dummyProject : project2;
   const currentGcList = activeProject === "project1" ? gcList : gcList2;
+
+  // Resolve display data: dynamic project or hardcoded
+  const displayProject = isDynamic ? dynamicProject : currentProject;
 
   const handleNavClick = (navId: string) => {
     if (navId === "bidboard") {
       setActiveView("bidboard");
+      setDynamicProject(null);
     } else if (navId === "project1" || navId === "project2") {
       setActiveView("project");
       setActiveProject(navId);
+      setDynamicProject(null);
       setActiveTab("overview");
       setShowAllTrades(false);
       setGcExpanded(null);
@@ -88,16 +109,47 @@ export default function Home() {
     }
   };
 
+  const handleProjectClick = (projectId: string) => {
+    if (projectId === "project1" || projectId === "project2") {
+      handleNavClick(projectId);
+    } else {
+      // Dynamic project
+      const found = storedProjects.find((p) => p.id === projectId);
+      if (found) {
+        setDynamicProject(found);
+        setActiveView("project");
+        setActiveProject(projectId as "project1"); // cast to satisfy type — won't match hardcoded
+        setActiveTab("overview");
+        setShowAllTrades(false);
+        setGcExpanded(null);
+        setModalOpen(false);
+      }
+    }
+  };
+
+  const handleProjectImported = (project: StoredProject) => {
+    setStoredProjects((prev) => [...prev, project]);
+    // Navigate to the new project
+    setDynamicProject(project);
+    setActiveView("project");
+    setActiveProject(project.id as "project1");
+    setActiveTab("overview");
+  };
+
   const footer = (
     <div className="border-t border-border bg-card px-6 py-3 flex items-center justify-end gap-3 shrink-0">
-      <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive-surface">
-        <X className="h-4 w-4 mr-1.5" />
-        Decline
-      </Button>
-      <Button variant="outline">
-        <Check className="h-4 w-4 mr-1.5" />
-        Intend to Bid
-      </Button>
+      {!isDynamic && (
+        <>
+          <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive-surface">
+            <X className="h-4 w-4 mr-1.5" />
+            Decline
+          </Button>
+          <Button variant="outline">
+            <Check className="h-4 w-4 mr-1.5" />
+            Intend to Bid
+          </Button>
+        </>
+      )}
       <Button onClick={() => setModalOpen(true)}>
         <Send className="h-4 w-4 mr-1.5" />
         Submit Bid
@@ -109,19 +161,22 @@ export default function Home() {
     <PlanHubShell
       footer={activeView === "project" ? footer : undefined}
       onNavClick={handleNavClick}
-      activeProject={activeView === "project" ? activeProject : undefined}
+      activeProject={activeView === "project" && !isDynamic ? activeProject : undefined}
       activeView={activeView}
     >
       {activeView === "bidboard" ? (
-        <BidBoard
-          onProjectClick={(projectId) => {
-            setActiveProject(projectId);
-            setActiveView("project");
-            setActiveTab("overview");
-            setShowAllTrades(false);
-            setGcExpanded(null);
-          }}
-        />
+        <>
+          <BidBoard
+            onProjectClick={handleProjectClick}
+            onImportClick={() => setImportModalOpen(true)}
+            storedProjects={storedProjects}
+          />
+          <ImportProjectModal
+            open={importModalOpen}
+            onOpenChange={setImportModalOpen}
+            onProjectImported={handleProjectImported}
+          />
+        </>
       ) : (
       <>
       {/* Project Header */}
@@ -129,11 +184,11 @@ export default function Home() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <h1 className="text-base font-semibold text-foreground truncate">
-              {currentProject.id} - {currentProject.name}
+              {isDynamic ? displayProject.name : `${currentProject.id} - ${currentProject.name}`}
             </h1>
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground shrink-0">
               <Calendar className="h-3.5 w-3.5" />
-              <span>Due: {currentProject.dueDate}</span>
+              <span>Due: {displayProject.dueDate}</span>
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -192,7 +247,7 @@ export default function Home() {
                 title="About This Project"
               >
                 <p className="text-sm text-foreground leading-relaxed">
-                  {currentProject.description}
+                  {displayProject.description}
                 </p>
               </SectionCard>
 
@@ -206,39 +261,39 @@ export default function Home() {
                 <div>
                   <DetailRow
                     label="Project Value"
-                    value={currentProject.projectValue}
+                    value={displayProject.projectValue}
                   />
                   <DetailRow
                     label="Project Size"
-                    value={currentProject.projectSize}
+                    value={displayProject.projectSize}
                   />
                   <DetailRow
                     label="Project Start Date"
-                    value={currentProject.startDate}
+                    value={displayProject.startDate}
                   />
                   <DetailRow
                     label="Project End Date"
-                    value={currentProject.endDate}
+                    value={displayProject.endDate}
                   />
                   <DetailRow
                     label="Project Status"
-                    value={currentProject.status}
+                    value={displayProject.status}
                   />
                   <DetailRow
                     label="Construction Type"
-                    value={currentProject.constructionType}
+                    value={displayProject.constructionType}
                   />
                   <DetailRow
                     label="Project Type"
-                    value={currentProject.projectType}
+                    value={displayProject.projectType}
                   />
                   <DetailRow
                     label="Building Use"
-                    value={currentProject.buildingUse}
+                    value={displayProject.buildingUse}
                   />
                   <DetailRow
                     label="Sector Labor Status"
-                    value={currentProject.sectorLaborStatus}
+                    value={displayProject.sectorLaborStatus}
                   />
                 </div>
               </SectionCard>
@@ -249,7 +304,7 @@ export default function Home() {
                 title="Trades Needed"
               >
                 <div className="flex flex-wrap gap-2">
-                  {currentProject.trades.map((trade) => (
+                  {displayProject.trades.map((trade) => (
                     <span
                       key={trade}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-success-surface text-success-foreground border border-success-border"
@@ -259,12 +314,12 @@ export default function Home() {
                     </span>
                   ))}
                 </div>
-                {!showAllTrades && (
+                {!isDynamic && !showAllTrades && displayProject.totalTrades > displayProject.trades.length && (
                   <button
                     onClick={() => setShowAllTrades(true)}
                     className="mt-3 text-sm font-medium text-primary hover:underline"
                   >
-                    + Show {currentProject.totalTrades - currentProject.trades.length}{" "}
+                    + Show {displayProject.totalTrades - displayProject.trades.length}{" "}
                     more
                   </button>
                 )}
@@ -296,102 +351,115 @@ export default function Home() {
                 }
               >
                 <p className="text-sm text-foreground mb-3">
-                  {currentProject.location}
+                  {displayProject.location || "Location TBD"}
                 </p>
                 {/* Map placeholder */}
                 <div className="w-full h-48 rounded-lg bg-accent border border-border flex items-center justify-center">
                   <div className="text-center">
                     <MapPin className="h-8 w-8 text-muted-foreground mx-auto" />
                     <p className="text-xs text-muted-foreground mt-1">
-                      Minneapolis, MN
+                      {displayProject.location ? displayProject.location.split(",").pop()?.trim() || "Location" : "Location TBD"}
                     </p>
                   </div>
                 </div>
               </SectionCard>
 
-              {/* General Contractors */}
-              <SectionCard
-                icon={
-                  <Building2 className="h-4 w-4 text-muted-foreground" />
-                }
-                title="General Contractors"
-              >
-                {/* Filter */}
-                <div className="mb-4">
-                  <button className="w-full flex items-center justify-between px-3 py-2 border border-border rounded-lg text-sm text-foreground hover:bg-accent transition-colors">
-                    <span>All Bidding Statuses</span>
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                </div>
+              {/* General Contractors — only for hardcoded projects */}
+              {!isDynamic ? (
+                <SectionCard
+                  icon={
+                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                  }
+                  title="General Contractors"
+                >
+                  {/* Filter */}
+                  <div className="mb-4">
+                    <button className="w-full flex items-center justify-between px-3 py-2 border border-border rounded-lg text-sm text-foreground hover:bg-accent transition-colors">
+                      <span>All Bidding Statuses</span>
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  </div>
 
-                {/* GC cards */}
-                <div className="space-y-3">
-                  {currentGcList.map((gc) => (
-                    <div
-                      key={gc.name}
-                      className="border border-border rounded-lg p-4"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="h-10 w-10 rounded-md bg-accent flex items-center justify-center shrink-0">
-                          <Building2 className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-semibold text-foreground truncate">
-                              {gc.name}
-                            </h3>
-                            <span className="text-yellow-500 text-sm">🏅</span>
+                  {/* GC cards */}
+                  <div className="space-y-3">
+                    {currentGcList.map((gc) => (
+                      <div
+                        key={gc.name}
+                        className="border border-border rounded-lg p-4"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="h-10 w-10 rounded-md bg-accent flex items-center justify-center shrink-0">
+                            <Building2 className="h-5 w-5 text-muted-foreground" />
                           </div>
-                          <div className="mt-1.5 space-y-1">
-                            <div className="flex items-center gap-2 text-xs text-primary">
-                              <Mail className="h-3 w-3" />
-                              <span>{gc.email}</span>
-                              <Send className="h-3 w-3 text-primary" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-sm font-semibold text-foreground truncate">
+                                {gc.name}
+                              </h3>
+                              <span className="text-yellow-500 text-sm">🏅</span>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-primary">
-                              <Phone className="h-3 w-3" />
-                              <span>{gc.phone}</span>
+                            <div className="mt-1.5 space-y-1">
+                              <div className="flex items-center gap-2 text-xs text-primary">
+                                <Mail className="h-3 w-3" />
+                                <span>{gc.email}</span>
+                                <Send className="h-3 w-3 text-primary" />
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-primary">
+                                <Phone className="h-3 w-3" />
+                                <span>{gc.phone}</span>
+                              </div>
                             </div>
+                            <div className="flex items-center gap-3 mt-2.5">
+                              <Badge variant="success" className="gap-1">
+                                <Check className="h-2.5 w-2.5" />
+                                {gc.status}
+                              </Badge>
+                              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                                <Calendar className="h-3 w-3" />
+                                DUE {gc.dueDate}
+                              </span>
+                            </div>
+                            {gc.hasSpecialInstructions && (
+                              <button
+                                onClick={() =>
+                                  setGcExpanded(
+                                    gcExpanded === gc.name ? null : gc.name
+                                  )
+                                }
+                                className="flex items-center gap-1 mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                <ChevronRight
+                                  className={`h-3 w-3 transition-transform ${
+                                    gcExpanded === gc.name ? "rotate-90" : ""
+                                  }`}
+                                />
+                                Special Instructions
+                              </button>
+                            )}
+                            {gcExpanded === gc.name && (
+                              <div className="mt-2 text-xs text-muted-foreground bg-accent rounded-md p-2.5">
+                                Contact before submitting. MBE participation
+                                required.
+                              </div>
+                            )}
                           </div>
-                          <div className="flex items-center gap-3 mt-2.5">
-                            <Badge variant="success" className="gap-1">
-                              <Check className="h-2.5 w-2.5" />
-                              {gc.status}
-                            </Badge>
-                            <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                              <Calendar className="h-3 w-3" />
-                              DUE {gc.dueDate}
-                            </span>
-                          </div>
-                          {gc.hasSpecialInstructions && (
-                            <button
-                              onClick={() =>
-                                setGcExpanded(
-                                  gcExpanded === gc.name ? null : gc.name
-                                )
-                              }
-                              className="flex items-center gap-1 mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                              <ChevronRight
-                                className={`h-3 w-3 transition-transform ${
-                                  gcExpanded === gc.name ? "rotate-90" : ""
-                                }`}
-                              />
-                              Special Instructions
-                            </button>
-                          )}
-                          {gcExpanded === gc.name && (
-                            <div className="mt-2 text-xs text-muted-foreground bg-accent rounded-md p-2.5">
-                              Contact before submitting. MBE participation
-                              required.
-                            </div>
-                          )}
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </SectionCard>
+                    ))}
+                  </div>
+                </SectionCard>
+              ) : (
+                <SectionCard
+                  icon={
+                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                  }
+                  title="General Contractors"
+                >
+                  <div className="text-sm text-muted-foreground py-4 text-center">
+                    No GC information available for imported projects yet.
+                  </div>
+                </SectionCard>
+              )}
             </div>
           </div>
         </div>
@@ -412,10 +480,11 @@ export default function Home() {
       <BidSubmissionModal
         open={modalOpen}
         onOpenChange={setModalOpen}
-        projectName={`${currentProject.id} - ${currentProject.name}`}
-        gcName={currentGcList[0].name}
-        gcEmail={currentGcList[0].email}
-        projectId={activeProject}
+        projectName={isDynamic ? displayProject.name : `${currentProject.id} - ${currentProject.name}`}
+        gcName={isDynamic ? "General Contractor" : currentGcList[0].name}
+        gcEmail={isDynamic ? "bids@contractor.com" : currentGcList[0].email}
+        projectId={isDynamic ? dynamicProject.id : activeProject}
+        projectContext={isDynamic ? dynamicProject.projectContext : undefined}
       />
       </>
       )}

@@ -56,7 +56,8 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
     const projectId = (formData.get("projectId") as string) || "project1";
-    const context = projectContextMap[projectId] ?? projectContextMap.project1;
+    const customContext = formData.get("projectContext") as string | null;
+    const context = customContext || (projectContextMap[projectId] ?? projectContextMap.project1);
     const followUp = (formData.get("followUp") as string) || "";
     const previousContext = (formData.get("context") as string) || "";
 

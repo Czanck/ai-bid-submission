@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { FeatureFlagsModal } from "@/components/feature-flags-modal";
 import {
   LayoutDashboard,
   FolderKanban,
@@ -72,8 +74,11 @@ export function PlanHubShell({
   activeProject?: string;
   activeView?: string;
 }) {
+  const [flagsOpen, setFlagsOpen] = useState(false);
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      <FeatureFlagsModal open={flagsOpen} onOpenChange={setFlagsOpen} />
       {/* Sidebar */}
       <aside className="flex flex-col w-[200px] bg-[var(--sidebar)] text-white shrink-0">
         {/* Logo */}
@@ -169,8 +174,11 @@ export function PlanHubShell({
               {dummyUser.company}
             </span>
           </div>
-          <button className="mt-2 w-full h-7 rounded-md bg-[#00B894] text-[11px] font-medium text-white hover:bg-[#009F7F] transition-colors">
-            Account Overview
+          <button
+            onClick={() => setFlagsOpen(true)}
+            className="mt-2 w-full h-7 rounded-md bg-[#00B894] text-[11px] font-medium text-white hover:bg-[#009F7F] transition-colors"
+          >
+            Feature Flags
           </button>
         </div>
       </aside>

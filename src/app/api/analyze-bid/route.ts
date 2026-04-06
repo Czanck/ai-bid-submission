@@ -66,8 +66,9 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
     const projectId = (formData.get("projectId") as string) || "project1";
+    const customContext = formData.get("projectContext") as string | null;
     const activeInstructions = projectId === "project2" ? specialInstructions2 : specialInstructions;
-    const projectContextText = projectId === "project2" ? project2Context : project1Context;
+    const projectContextText = customContext || (projectId === "project2" ? project2Context : project1Context);
 
     if (!files || files.length === 0) {
       return NextResponse.json(

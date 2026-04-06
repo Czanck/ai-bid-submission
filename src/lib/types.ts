@@ -79,3 +79,42 @@ export interface UploadedFile {
   size: number;
   type: string;
 }
+
+// --- Stored / imported project types ---
+
+export interface StoredProject {
+  id: string;
+  name: string;
+  description: string;
+  location: string;
+  projectValue: string;
+  projectSize: string;
+  dueDate: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  constructionType: string;
+  projectType: string;
+  buildingUse: string;
+  sectorLaborStatus: string;
+  trades: string[];
+  totalTrades: number;
+  /** AI-extracted context sent alongside bids for comparison */
+  projectContext: string;
+  /** Column on the bid board */
+  boardColumn: "saved" | "estimating" | "bidding" | "submitted" | "won" | "lost";
+  createdAt: number;
+}
+
+export interface StoredProjectFile {
+  projectId: string;
+  fileName: string;
+  fileType: string;
+  /** Extracted text content from the file */
+  extractedText: string;
+}
+
+export interface ScanProjectResponse {
+  project: Omit<StoredProject, "boardColumn" | "createdAt">;
+  files: StoredProjectFile[];
+}

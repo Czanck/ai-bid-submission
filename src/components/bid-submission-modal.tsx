@@ -57,6 +57,7 @@ interface BidSubmissionModalProps {
   gcName?: string;
   gcEmail?: string;
   projectId?: string;
+  projectContext?: string;
 }
 
 const statusConfig: Record<
@@ -126,6 +127,7 @@ export function BidSubmissionModal({
   gcName = "Turner Construction",
   gcEmail = "bids@turnerconstruction.com",
   projectId = "project1",
+  projectContext,
 }: BidSubmissionModalProps) {
   const applyTemplate = useCallback(
     (tpl: string) => {
@@ -306,6 +308,7 @@ export function BidSubmissionModal({
       const formData = new FormData();
       files.forEach((f) => formData.append("files", f.file));
       formData.append("projectId", projectId);
+      if (projectContext) formData.append("projectContext", projectContext);
 
       const response = await fetch("/api/analyze-bid", {
         method: "POST",
@@ -373,6 +376,7 @@ export function BidSubmissionModal({
       const formData = new FormData();
       files.forEach((f) => formData.append("files", f.file));
       formData.append("projectId", projectId);
+      if (projectContext) formData.append("projectContext", projectContext);
       const response = await fetch("/api/improve-bid", { method: "POST", body: formData });
       const data = await response.json() as BidReadinessScore;
       if (data.score !== undefined) {
@@ -391,6 +395,7 @@ export function BidSubmissionModal({
     const formData = new FormData();
     files.forEach((f) => formData.append("files", f.file));
     formData.append("projectId", projectId);
+    if (projectContext) formData.append("projectContext", projectContext);
     formData.append("followUp", followUpInput.trim());
     formData.append("context", bidScore ? `Score: ${bidScore.score}/100. ${bidScore.summary}. ${bidScore.dimensions.map(d => `${d.name}: ${d.score}/100 - ${d.explanation}`).join(". ")}` : "");
     setFollowUpInput("");
@@ -495,25 +500,70 @@ export function BidSubmissionModal({
       }
       setIsAnalyzing(false);
 
-      // Auto-trigger bid readiness score
+      // Mock bid readiness score for dev skip
       setIsImprovingBid(true);
       setBidScore(null);
-      (async () => {
-        try {
-          const improveForm = new FormData();
-          [{ file: new File([""], "bid.pdf", { type: "application/pdf" }), id: "test-1", name: "bid-proposal.pdf", size: 245000, type: "application/pdf" }].forEach((f) => improveForm.append("files", f.file));
-          improveForm.append("projectId", projectId);
-          const improveRes = await fetch("/api/improve-bid", { method: "POST", body: improveForm });
-          const improveData = await improveRes.json() as BidReadinessScore;
-          if (improveData.score !== undefined) {
-            setBidScore(improveData);
-          }
-        } catch {
-          // Score failed silently
-        } finally {
-          setIsImprovingBid(false);
-        }
-      })();
+      setTimeout(() => {
+        const mockScore: BidReadinessScore = projectId === "project2" ? {
+          score: 82,
+          status: "ready",
+          confidence: "high",
+          summary: "Bid package is well-structured with minor clarity improvements possible",
+          dimensions: [
+            { name: "Coverage", score: 85, explanation: "All major scope categories appear addressed for the medical retrofit.", findings: [
+              { text: "Fire alarm scope references NFPA 72 but does not specify edition year.", severity: "info", source: "Proposal", cta: "Fix" },
+              { text: "Emergency generator tie-in scope is included — good coverage for this project type.", severity: "info", source: "Proposal", },
+            ]},
+            { name: "Scope Clarity", score: 78, explanation: "Trade breakdown is clear but exclusions could be more specific.", findings: [
+              { text: "No explicit exclusion list found — GCs may assume items are included that aren't.", severity: "warning", source: "Proposal", cta: "Fix" },
+              { text: "Low voltage/data scope bundled at $345K — consider noting if it includes fiber vs. copper.", severity: "info", source: "Trade Breakdown", cta: "Ask AI" },
+            ]},
+            { name: "Consistency", score: 88, explanation: "Proposal language matches Austin, TX project details consistently.", findings: [
+              { text: "Project references and location are consistent throughout.", severity: "info", source: "Proposal", },
+            ]},
+            { name: "Submission Clarity", score: 80, explanation: "Subject line and message clearly identify the bid.", findings: [
+              { text: "Subject line includes project number and trade — should stand out in a GC inbox.", severity: "info", source: "Message", },
+              { text: "Message body could mention key inclusions (fire alarm, generator) to help GC route to the right estimator.", severity: "info", source: "Message", cta: "Fix" },
+            ]},
+          ],
+          promptChips: [
+            "What exclusions should I add?",
+            "Should I break out generator work separately?",
+            "Is my fire alarm scope specific enough?",
+            "How should I clarify low voltage vs. data?",
+          ],
+        } : {
+          score: 74,
+          status: "needs-review",
+          confidence: "high",
+          summary: "1 likely gap, 2 clarity issues to address before submission",
+          dimensions: [
+            { name: "Coverage", score: 70, explanation: "Core electrical scope is covered but prevailing wage documentation may be missing.", findings: [
+              { text: "Prevailing wage project but no wage rate acknowledgment found in proposal.", severity: "warning", source: "Proposal", cta: "Fix" },
+              { text: "Audio/visual wiring scope appears included — good for this project type.", severity: "info", source: "Proposal", },
+            ]},
+            { name: "Scope Clarity", score: 72, explanation: "Trade breakdown is present but exclusions section needs work.", findings: [
+              { text: "No exclusions section found — GC may assume demolition, trenching, or patching is included.", severity: "warning", source: "Proposal", cta: "Fix" },
+              { text: "Electronic access control is listed as a trade but not broken out in pricing.", severity: "info", source: "Trade Breakdown", cta: "Ask AI" },
+            ]},
+            { name: "Consistency", score: 80, explanation: "Proposal references match Minneapolis project details.", findings: [
+              { text: "Project name and location references are consistent.", severity: "info", source: "Proposal", },
+            ]},
+            { name: "Submission Clarity", score: 76, explanation: "Message is functional but could be more descriptive.", findings: [
+              { text: "Subject line is adequate but doesn't mention the specific trades being bid.", severity: "info", source: "Message", cta: "Fix" },
+              { text: "Message body is generic — consider summarizing key scope inclusions for the GC.", severity: "info", source: "Message", cta: "Fix" },
+            ]},
+          ],
+          promptChips: [
+            "What prevailing wage docs do I need?",
+            "What exclusions should I list?",
+            "Should I break out access control pricing?",
+            "How can I improve my subject line?",
+          ],
+        };
+        setBidScore(mockScore);
+        setIsImprovingBid(false);
+      }, 1500);
     }, 2500);
   }, [projectId, gcName, projectName]);
 
@@ -1087,9 +1137,6 @@ export function BidSubmissionModal({
                                     </div>
                                   </div>
                                   <p className="text-xs text-muted-foreground leading-snug">{bidScore.summary}</p>
-                                  {bidScore.confidenceNote && (
-                                    <p className="text-[10px] text-muted-foreground/70 mt-0.5 italic">{bidScore.confidenceNote}</p>
-                                  )}
                                 </div>
                                 {/* Breakdown toggle */}
                                 <button
