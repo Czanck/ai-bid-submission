@@ -1224,7 +1224,7 @@ export function BidSubmissionModal({
                                 onClick={() => setReadinessExpanded(!readinessExpanded)}
                                 className="w-full flex items-center justify-between py-2"
                               >
-                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                <span className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
                                   Scope Alignment ({readinessCheck.items.length} trade{readinessCheck.items.length !== 1 ? "s" : ""} checked)
                                 </span>
                                 <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${readinessExpanded ? "rotate-180" : ""}`} />
@@ -1247,7 +1247,7 @@ export function BidSubmissionModal({
                                       return (
                                       <div
                                         key={i}
-                                        className="rounded-lg border border-border bg-card px-3 py-2.5 transition-colors"
+                                        className="rounded-lg border border-border bg-card px-3.5 py-3 transition-colors"
                                       >
                                         <div className="flex items-start gap-2.5">
                                           <span className="shrink-0 mt-0.5">
@@ -1261,8 +1261,8 @@ export function BidSubmissionModal({
                                           </span>
                                           <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 flex-wrap">
-                                              <span className="text-xs font-semibold text-foreground">{item.trade}</span>
-                                              <span className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded transition-colors ${
+                                              <span className="text-sm font-semibold text-foreground">{item.trade}</span>
+                                              <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded transition-colors ${
                                                 effectiveStatus === "aligned"
                                                   ? "bg-emerald-100 text-emerald-700"
                                                   : effectiveStatus === "misaligned"
@@ -1272,17 +1272,17 @@ export function BidSubmissionModal({
                                                 {effectiveStatus === "aligned" ? "Aligned" : effectiveStatus === "misaligned" ? "Misaligned" : "Missing"}
                                               </span>
                                               {isOverridden && (
-                                                <span className="text-[9px] text-muted-foreground italic">manually resolved</span>
+                                                <span className="text-[10px] text-muted-foreground italic">manually resolved</span>
                                               )}
                                             </div>
-                                            <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{item.detail}</p>
+                                            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{item.detail}</p>
                                             {!isOverridden && item.fix && (
-                                              <div className="mt-1.5 rounded-md bg-white/80 border border-red-100 px-2.5 py-2">
+                                              <div className="mt-2 rounded-md bg-muted/60 border border-border px-3 py-2.5">
                                                 <div className="flex items-center gap-1.5 mb-1">
-                                                  <Lightbulb className="h-3 w-3 text-red-500" />
-                                                  <span className="text-[10px] font-semibold text-red-700">How to fix</span>
+                                                  <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
+                                                  <span className="text-xs font-semibold text-foreground">How to fix</span>
                                                 </div>
-                                                <p className="text-[11px] text-red-700 leading-snug">{item.fix}</p>
+                                                <p className="text-xs text-muted-foreground leading-relaxed">{item.fix}</p>
                                               </div>
                                             )}
                                             {/* Mark as Aligned / Undo */}
@@ -1327,7 +1327,7 @@ export function BidSubmissionModal({
                               <div className="px-4 pb-3">
                                 <div className="flex items-start gap-2 rounded-lg bg-purple-100/50 border border-purple-200 px-3 py-2.5">
                                   <Sparkles className="h-3.5 w-3.5 text-purple-500 shrink-0 mt-0.5" />
-                                  <p className="text-[11px] text-purple-700 leading-snug">{readinessCheck.writingSummary}</p>
+                                  <p className="text-xs text-purple-700 leading-relaxed">{readinessCheck.writingSummary}</p>
                                 </div>
                               </div>
                             )}
@@ -1343,7 +1343,7 @@ export function BidSubmissionModal({
                                         setFollowUpInput(chip);
                                         setTimeout(() => followUpInputRef.current?.focus(), 50);
                                       }}
-                                      className="text-[10px] px-2 py-1 rounded-full border border-purple-200 text-purple-600 hover:bg-purple-100 hover:border-purple-300 transition-colors"
+                                      className="text-xs px-2.5 py-1 rounded-full border border-purple-200 text-purple-600 hover:bg-purple-100 hover:border-purple-300 transition-colors"
                                     >
                                       {chip}
                                     </button>
@@ -1358,12 +1358,12 @@ export function BidSubmissionModal({
                                 <div className="pt-2 border-t border-purple-200">
                                   <div className="flex items-center gap-1.5 mb-1.5">
                                     <Sparkles className="h-3.5 w-3.5 text-purple-500" />
-                                    <span className="text-xs font-semibold text-purple-700">Follow-up</span>
+                                    <span className="text-sm font-semibold text-purple-700">Follow-up</span>
                                   </div>
                                   <div className="space-y-1">
                                     {followUpResponse.map((line, i) => (
-                                      <div key={i} className="flex items-start gap-2 text-xs text-purple-700">
-                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-purple-400 shrink-0" />
+                                      <div key={i} className="flex items-start gap-2 text-sm text-purple-700">
+                                        <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-purple-400 shrink-0" />
                                         <span>{line}</span>
                                       </div>
                                     ))}
@@ -1392,7 +1392,7 @@ export function BidSubmissionModal({
                                     onChange={(e) => setFollowUpInput(e.target.value)}
                                     onKeyDown={(e) => { if (e.key === "Enter") handleFollowUp(); }}
                                     placeholder={readinessCheck.promptChips[placeholderIndex % readinessCheck.promptChips.length] || "Ask about your bid..."}
-                                    className="flex-1 text-xs px-2.5 py-1.5 rounded-md border border-purple-300 bg-white text-purple-900 placeholder-purple-300 focus:outline-none focus:ring-1 focus:ring-purple-400 transition-colors"
+                                    className="flex-1 text-sm px-3 py-2 rounded-md border border-purple-300 bg-white text-purple-900 placeholder-purple-300 focus:outline-none focus:ring-1 focus:ring-purple-400 transition-colors"
                                   />
                                   <button
                                     onClick={handleFollowUp}
