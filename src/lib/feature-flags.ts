@@ -13,13 +13,12 @@ export interface FeatureFlag {
 // Add new feature flags here:
 // ──────────────────────────────────────────────
 export const FEATURE_FLAGS: FeatureFlag[] = [
-  // Example:
-  // {
-  //   id: "dark-mode",
-  //   label: "Dark Mode",
-  //   description: "Enable dark mode across the app",
-  //   defaultValue: false,
-  // },
+  {
+    id: "bid-readiness-check",
+    label: "Bid Readiness Check",
+    description: "Replace the scored bid readiness section with a scope-alignment check that compares bid files against project files",
+    defaultValue: false,
+  },
 ];
 
 const STORAGE_KEY = "feature-flags";

@@ -80,6 +80,22 @@ export interface UploadedFile {
   type: string;
 }
 
+// --- Bid Readiness Check (feature-flagged) ---
+
+export interface ScopeCheckItem {
+  trade: string;
+  status: "aligned" | "misaligned" | "missing";
+  detail: string;
+  fix?: string;
+}
+
+export interface BidReadinessCheck {
+  result: "looks-good" | "needs-review";
+  items: ScopeCheckItem[];
+  writingSummary: string;
+  promptChips: string[];
+}
+
 // --- Stored / imported project types ---
 
 export interface StoredProject {

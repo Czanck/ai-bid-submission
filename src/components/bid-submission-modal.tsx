@@ -42,12 +42,14 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { EnvelopeAnimation } from "./envelope-animation";
+import { getFlag } from "@/lib/feature-flags";
 import type {
   ModalStep,
   UploadedFile,
   AnalyzeBidResponse,
   RequirementStatus,
   BidReadinessScore,
+  BidReadinessCheck,
 } from "@/lib/types";
 
 interface BidSubmissionModalProps {
@@ -179,6 +181,11 @@ export function BidSubmissionModal({
   const [followUpResponse, setFollowUpResponse] = useState<string[] | null>(null);
   const followUpInputRef = useRef<HTMLInputElement>(null);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
+
+  // Bid Readiness Check (feature-flagged)
+  const [isReadinessChecking, setIsReadinessChecking] = useState(false);
+  const [readinessCheck, setReadinessCheck] = useState<BidReadinessCheck | null>(null);
+  const [readinessExpanded, setReadinessExpanded] = useState<boolean | null>(null); // null = unset, will default based on result
   const [requirementsExpanded, setRequirementsExpanded] = useState(true);
   const [messageTemplate, setMessageTemplate] = useState(
     "Dear {{GC Name}},\n\nPlease find attached our bid submission for {{Project Name}}.\n\nBid Summary:\n- Total Bid Amount: {{Bid Amount}}\n\nBest regards,\n{{Your Company}}"
@@ -251,6 +258,9 @@ export function BidSubmissionModal({
           setFollowUpInput("");
           setIsFollowingUp(false);
           setFollowUpResponse(null);
+          setIsReadinessChecking(false);
+          setReadinessCheck(null);
+          setReadinessExpanded(null);
         }, 300);
       }
       onOpenChange(newOpen);
@@ -342,22 +352,50 @@ export function BidSubmissionModal({
       setRequirementsExpanded(hasUnmet);
       setIsAnalyzing(false);
 
-      // Auto-trigger bid readiness score after analysis completes
-      setIsImprovingBid(true);
-      setBidScore(null);
-      try {
-        const improveForm = new FormData();
-        files.forEach((f) => improveForm.append("files", f.file));
-        improveForm.append("projectId", projectId);
-        const improveRes = await fetch("/api/improve-bid", { method: "POST", body: improveForm });
-        const improveData = await improveRes.json() as BidReadinessScore;
-        if (improveData.score !== undefined) {
-          setBidScore(improveData);
+      // Auto-trigger bid analysis after document extraction completes
+      const readinessCheckEnabled = getFlag("bid-readiness-check");
+
+      if (readinessCheckEnabled) {
+        // Feature-flagged: Bid Readiness Check (scope alignment)
+        setIsReadinessChecking(true);
+        setReadinessCheck(null);
+        setReadinessExpanded(null);
+        try {
+          const checkForm = new FormData();
+          files.forEach((f) => checkForm.append("files", f.file));
+          checkForm.append("projectId", projectId);
+          if (projectContext) checkForm.append("projectContext", projectContext);
+          const checkRes = await fetch("/api/readiness-check", { method: "POST", body: checkForm });
+          const checkData = await checkRes.json() as BidReadinessCheck;
+          if (checkData.result) {
+            setReadinessCheck(checkData);
+            // "needs-review" => expanded by default, "looks-good" => collapsed by default
+            setReadinessExpanded(checkData.result === "needs-review");
+          }
+        } catch {
+          // Check failed silently — not critical to submission
+        } finally {
+          setIsReadinessChecking(false);
         }
-      } catch {
-        // Score failed silently — not critical to submission
-      } finally {
-        setIsImprovingBid(false);
+      } else {
+        // Default: Bid Readiness Score (original)
+        setIsImprovingBid(true);
+        setBidScore(null);
+        try {
+          const improveForm = new FormData();
+          files.forEach((f) => improveForm.append("files", f.file));
+          improveForm.append("projectId", projectId);
+          if (projectContext) improveForm.append("projectContext", projectContext);
+          const improveRes = await fetch("/api/improve-bid", { method: "POST", body: improveForm });
+          const improveData = await improveRes.json() as BidReadinessScore;
+          if (improveData.score !== undefined) {
+            setBidScore(improveData);
+          }
+        } catch {
+          // Score failed silently — not critical to submission
+        } finally {
+          setIsImprovingBid(false);
+        }
       }
     } catch (err) {
       setError(
@@ -500,70 +538,117 @@ export function BidSubmissionModal({
       }
       setIsAnalyzing(false);
 
-      // Mock bid readiness score for dev skip
-      setIsImprovingBid(true);
-      setBidScore(null);
-      setTimeout(() => {
-        const mockScore: BidReadinessScore = projectId === "project2" ? {
-          score: 82,
-          status: "ready",
-          confidence: "high",
-          summary: "Bid package is well-structured with minor clarity improvements possible",
-          dimensions: [
-            { name: "Coverage", score: 85, explanation: "All major scope categories appear addressed for the medical retrofit.", findings: [
-              { text: "Fire alarm scope references NFPA 72 but does not specify edition year.", severity: "info", source: "Proposal", cta: "Fix" },
-              { text: "Emergency generator tie-in scope is included — good coverage for this project type.", severity: "info", source: "Proposal", },
-            ]},
-            { name: "Scope Clarity", score: 78, explanation: "Trade breakdown is clear but exclusions could be more specific.", findings: [
-              { text: "No explicit exclusion list found — GCs may assume items are included that aren't.", severity: "warning", source: "Proposal", cta: "Fix" },
-              { text: "Low voltage/data scope bundled at $345K — consider noting if it includes fiber vs. copper.", severity: "info", source: "Trade Breakdown", cta: "Ask AI" },
-            ]},
-            { name: "Consistency", score: 88, explanation: "Proposal language matches Austin, TX project details consistently.", findings: [
-              { text: "Project references and location are consistent throughout.", severity: "info", source: "Proposal", },
-            ]},
-            { name: "Submission Clarity", score: 80, explanation: "Subject line and message clearly identify the bid.", findings: [
-              { text: "Subject line includes project number and trade — should stand out in a GC inbox.", severity: "info", source: "Message", },
-              { text: "Message body could mention key inclusions (fire alarm, generator) to help GC route to the right estimator.", severity: "info", source: "Message", cta: "Fix" },
-            ]},
-          ],
-          promptChips: [
-            "What exclusions should I add?",
-            "Should I break out generator work separately?",
-            "Is my fire alarm scope specific enough?",
-            "How should I clarify low voltage vs. data?",
-          ],
-        } : {
-          score: 74,
-          status: "needs-review",
-          confidence: "high",
-          summary: "1 likely gap, 2 clarity issues to address before submission",
-          dimensions: [
-            { name: "Coverage", score: 70, explanation: "Core electrical scope is covered but prevailing wage documentation may be missing.", findings: [
-              { text: "Prevailing wage project but no wage rate acknowledgment found in proposal.", severity: "warning", source: "Proposal", cta: "Fix" },
-              { text: "Audio/visual wiring scope appears included — good for this project type.", severity: "info", source: "Proposal", },
-            ]},
-            { name: "Scope Clarity", score: 72, explanation: "Trade breakdown is present but exclusions section needs work.", findings: [
-              { text: "No exclusions section found — GC may assume demolition, trenching, or patching is included.", severity: "warning", source: "Proposal", cta: "Fix" },
-              { text: "Electronic access control is listed as a trade but not broken out in pricing.", severity: "info", source: "Trade Breakdown", cta: "Ask AI" },
-            ]},
-            { name: "Consistency", score: 80, explanation: "Proposal references match Minneapolis project details.", findings: [
-              { text: "Project name and location references are consistent.", severity: "info", source: "Proposal", },
-            ]},
-            { name: "Submission Clarity", score: 76, explanation: "Message is functional but could be more descriptive.", findings: [
-              { text: "Subject line is adequate but doesn't mention the specific trades being bid.", severity: "info", source: "Message", cta: "Fix" },
-              { text: "Message body is generic — consider summarizing key scope inclusions for the GC.", severity: "info", source: "Message", cta: "Fix" },
-            ]},
-          ],
-          promptChips: [
-            "What prevailing wage docs do I need?",
-            "What exclusions should I list?",
-            "Should I break out access control pricing?",
-            "How can I improve my subject line?",
-          ],
-        };
-        setBidScore(mockScore);
-        setIsImprovingBid(false);
-      }, 1500);
+      const readinessCheckEnabled = getFlag("bid-readiness-check");
+
+      if (readinessCheckEnabled) {
+        // Mock readiness check
+        setIsReadinessChecking(true);
+        setReadinessCheck(null);
+        setReadinessExpanded(null);
+        setTimeout(() => {
+          const mockCheck: BidReadinessCheck = projectId === "project2" ? {
+            result: "looks-good",
+            items: [
+              { trade: "Electrical Rough-In", status: "aligned", detail: "Scope matches project specifications for 277/480V distribution and branch circuits." },
+              { trade: "Fire Alarm", status: "aligned", detail: "NFPA 72 references and device counts align with project requirements." },
+              { trade: "Low Voltage / Data", status: "aligned", detail: "Cabling scope covers CAT6A and fiber pathways as specified." },
+              { trade: "Emergency Generator Tie-In", status: "aligned", detail: "Generator connection and ATS scope matches project mechanical schedule." },
+              { trade: "Panel Upgrades", status: "aligned", detail: "Panel schedule and amperage ratings match specification requirements." },
+            ],
+            writingSummary: "Consider adding a brief executive summary at the top of your proposal and organizing scope items under clear subheadings to improve readability for the GC's estimating team.",
+            promptChips: [
+              "Should I add an exclusions section?",
+              "Is my fire alarm scope specific enough?",
+              "How should I format my trade breakdown?",
+              "What certifications should I mention?",
+            ],
+          } : {
+            result: "needs-review",
+            items: [
+              { trade: "Electrical Rough-In", status: "aligned", detail: "Branch circuit layout and panel schedule align with project electrical drawings." },
+              { trade: "Lighting & Controls", status: "misaligned", detail: "Bid references standard 0-10V dimming but project specs require DALI controls for the open office areas.", fix: "Update your dimming control specification to include DALI protocol for open office zones (Drawing E-4, Note 7). You can keep 0-10V for back-of-house areas." },
+              { trade: "Fire Alarm", status: "aligned", detail: "Device counts and NFPA 72 references align with project fire alarm drawings." },
+              { trade: "Low Voltage", status: "missing", detail: "Project specs call for a dedicated AV conduit pathway to 12 conference rooms, but your bid does not address AV rough-in.", fix: "Add a line item for AV conduit rough-in to conference rooms per Drawing T-2. Include 1\" EMT with pull strings to each of the 12 locations noted on the reflected ceiling plan." },
+            ],
+            writingSummary: "Your proposal would benefit from a clear exclusions section and consistent formatting of scope items — several trades are described in paragraph form while others use bullet points.",
+            promptChips: [
+              "What DALI controls do the specs require?",
+              "Where are the AV rough-in locations?",
+              "What exclusions should I add?",
+              "Should I break out access control separately?",
+              "How can I improve my proposal formatting?",
+            ],
+          };
+          setReadinessCheck(mockCheck);
+          setReadinessExpanded(mockCheck.result === "needs-review");
+          setIsReadinessChecking(false);
+        }, 1500);
+      } else {
+        // Mock bid readiness score (original)
+        setIsImprovingBid(true);
+        setBidScore(null);
+        setTimeout(() => {
+          const mockScore: BidReadinessScore = projectId === "project2" ? {
+            score: 82,
+            status: "ready",
+            confidence: "high",
+            summary: "Bid package is well-structured with minor clarity improvements possible",
+            dimensions: [
+              { name: "Coverage", score: 85, explanation: "All major scope categories appear addressed for the medical retrofit.", findings: [
+                { text: "Fire alarm scope references NFPA 72 but does not specify edition year.", severity: "info", source: "Proposal", cta: "Fix" },
+                { text: "Emergency generator tie-in scope is included — good coverage for this project type.", severity: "info", source: "Proposal", },
+              ]},
+              { name: "Scope Clarity", score: 78, explanation: "Trade breakdown is clear but exclusions could be more specific.", findings: [
+                { text: "No explicit exclusion list found — GCs may assume items are included that aren't.", severity: "warning", source: "Proposal", cta: "Fix" },
+                { text: "Low voltage/data scope bundled at $345K — consider noting if it includes fiber vs. copper.", severity: "info", source: "Trade Breakdown", cta: "Ask AI" },
+              ]},
+              { name: "Consistency", score: 88, explanation: "Proposal language matches Austin, TX project details consistently.", findings: [
+                { text: "Project references and location are consistent throughout.", severity: "info", source: "Proposal", },
+              ]},
+              { name: "Submission Clarity", score: 80, explanation: "Subject line and message clearly identify the bid.", findings: [
+                { text: "Subject line includes project number and trade — should stand out in a GC inbox.", severity: "info", source: "Message", },
+                { text: "Message body could mention key inclusions (fire alarm, generator) to help GC route to the right estimator.", severity: "info", source: "Message", cta: "Fix" },
+              ]},
+            ],
+            promptChips: [
+              "What exclusions should I add?",
+              "Should I break out generator work separately?",
+              "Is my fire alarm scope specific enough?",
+              "How should I clarify low voltage vs. data?",
+            ],
+          } : {
+            score: 74,
+            status: "needs-review",
+            confidence: "high",
+            summary: "1 likely gap, 2 clarity issues to address before submission",
+            dimensions: [
+              { name: "Coverage", score: 70, explanation: "Core electrical scope is covered but prevailing wage documentation may be missing.", findings: [
+                { text: "Prevailing wage project but no wage rate acknowledgment found in proposal.", severity: "warning", source: "Proposal", cta: "Fix" },
+                { text: "Audio/visual wiring scope appears included — good for this project type.", severity: "info", source: "Proposal", },
+              ]},
+              { name: "Scope Clarity", score: 72, explanation: "Trade breakdown is present but exclusions section needs work.", findings: [
+                { text: "No exclusions section found — GC may assume demolition, trenching, or patching is included.", severity: "warning", source: "Proposal", cta: "Fix" },
+                { text: "Electronic access control is listed as a trade but not broken out in pricing.", severity: "info", source: "Trade Breakdown", cta: "Ask AI" },
+              ]},
+              { name: "Consistency", score: 80, explanation: "Proposal references match Minneapolis project details.", findings: [
+                { text: "Project name and location references are consistent.", severity: "info", source: "Proposal", },
+              ]},
+              { name: "Submission Clarity", score: 76, explanation: "Message is functional but could be more descriptive.", findings: [
+                { text: "Subject line is adequate but doesn't mention the specific trades being bid.", severity: "info", source: "Message", cta: "Fix" },
+                { text: "Message body is generic — consider summarizing key scope inclusions for the GC.", severity: "info", source: "Message", cta: "Fix" },
+              ]},
+            ],
+            promptChips: [
+              "What prevailing wage docs do I need?",
+              "What exclusions should I list?",
+              "Should I break out access control pricing?",
+              "How can I improve my subject line?",
+            ],
+          };
+          setBidScore(mockScore);
+          setIsImprovingBid(false);
+        }, 1500);
+      }
     }, 2500);
   }, [projectId, gcName, projectName]);
 
@@ -1084,7 +1169,209 @@ export function BidSubmissionModal({
                   ) : (
                   <>
 
-                    {/* Bid Readiness Score section */}
+                    {/* ===== Bid Readiness Check (feature-flagged) ===== */}
+                    {(isReadinessChecking || readinessCheck !== null) && (
+                      <div className="border-b border-border">
+                        {isReadinessChecking ? (
+                          <div className="px-4 py-4 bg-purple-50/30 space-y-3">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-lg bg-purple-200 animate-pulse shrink-0" />
+                              <div className="flex-1 space-y-2">
+                                <div className="h-4 rounded bg-purple-200 animate-pulse w-44" />
+                                <div className="h-3 rounded bg-purple-100 animate-pulse w-56" />
+                              </div>
+                              <div className="h-7 w-28 rounded-full bg-purple-100 animate-pulse shrink-0" />
+                            </div>
+                            <div className="space-y-2">
+                              <div className="h-10 rounded-lg bg-purple-100 animate-pulse" />
+                              <div className="h-10 rounded-lg bg-purple-100 animate-pulse" />
+                              <div className="h-10 rounded-lg bg-purple-100 animate-pulse" />
+                            </div>
+                          </div>
+                        ) : readinessCheck !== null ? (
+                          <div className="bg-purple-50/30">
+                            {/* Header row */}
+                            <div className="px-4 py-3">
+                              <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-foreground">Bid Readiness Check</h3>
+                                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${
+                                  readinessCheck.result === "looks-good"
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : "bg-red-100 text-red-700"
+                                }`}>
+                                  {readinessCheck.result === "looks-good" ? (
+                                    <><CheckCircle2 className="h-3.5 w-3.5" /> Looks Good</>
+                                  ) : (
+                                    <><ShieldAlert className="h-3.5 w-3.5" /> Needs Review</>
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Accordion: scope check breakdown */}
+                            <div className="px-4 pb-1">
+                              <button
+                                onClick={() => setReadinessExpanded(!readinessExpanded)}
+                                className="w-full flex items-center justify-between py-2"
+                              >
+                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                  Scope Alignment ({readinessCheck.items.length} trade{readinessCheck.items.length !== 1 ? "s" : ""} checked)
+                                </span>
+                                <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${readinessExpanded ? "rotate-180" : ""}`} />
+                              </button>
+                            </div>
+
+                            <AnimatePresence>
+                              {readinessExpanded && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: "auto", opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.2 }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="px-4 pb-3 space-y-2">
+                                    {readinessCheck.items.map((item, i) => (
+                                      <div
+                                        key={i}
+                                        className={`rounded-lg border px-3 py-2.5 ${
+                                          item.status === "aligned"
+                                            ? "border-emerald-200 bg-emerald-50/50"
+                                            : item.status === "misaligned"
+                                            ? "border-red-200 bg-red-50/50"
+                                            : "border-amber-200 bg-amber-50/50"
+                                        }`}
+                                      >
+                                        <div className="flex items-start gap-2.5">
+                                          <span className="shrink-0 mt-0.5">
+                                            {item.status === "aligned" ? (
+                                              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                                            ) : item.status === "misaligned" ? (
+                                              <XCircle className="h-4 w-4 text-red-600" />
+                                            ) : (
+                                              <AlertTriangle className="h-4 w-4 text-amber-600" />
+                                            )}
+                                          </span>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-xs font-semibold text-foreground">{item.trade}</span>
+                                              <span className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                                                item.status === "aligned"
+                                                  ? "bg-emerald-100 text-emerald-700"
+                                                  : item.status === "misaligned"
+                                                  ? "bg-red-100 text-red-700"
+                                                  : "bg-amber-100 text-amber-700"
+                                              }`}>
+                                                {item.status === "aligned" ? "Aligned" : item.status === "misaligned" ? "Misaligned" : "Missing"}
+                                              </span>
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{item.detail}</p>
+                                            {item.fix && (
+                                              <div className="mt-1.5 rounded-md bg-white/80 border border-red-100 px-2.5 py-2">
+                                                <div className="flex items-center gap-1.5 mb-1">
+                                                  <Lightbulb className="h-3 w-3 text-red-500" />
+                                                  <span className="text-[10px] font-semibold text-red-700">How to fix</span>
+                                                </div>
+                                                <p className="text-[11px] text-red-700 leading-snug">{item.fix}</p>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+
+                            {/* Writing quality summary */}
+                            {readinessCheck.writingSummary && (
+                              <div className="px-4 pb-3">
+                                <div className="flex items-start gap-2 rounded-lg bg-purple-100/50 border border-purple-200 px-3 py-2.5">
+                                  <Sparkles className="h-3.5 w-3.5 text-purple-500 shrink-0 mt-0.5" />
+                                  <p className="text-[11px] text-purple-700 leading-snug">{readinessCheck.writingSummary}</p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Prompt chips */}
+                            {readinessCheck.promptChips.length > 0 && (
+                              <div className="px-4 pb-2">
+                                <div className="flex flex-wrap gap-1.5">
+                                  {readinessCheck.promptChips.map((chip, i) => (
+                                    <button
+                                      key={i}
+                                      onClick={() => {
+                                        setFollowUpInput(chip);
+                                        setTimeout(() => followUpInputRef.current?.focus(), 50);
+                                      }}
+                                      className="text-[10px] px-2 py-1 rounded-full border border-purple-200 text-purple-600 hover:bg-purple-100 hover:border-purple-300 transition-colors"
+                                    >
+                                      {chip}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Follow-up response */}
+                            {followUpResponse !== null && (
+                              <div className="px-4 pb-2">
+                                <div className="pt-2 border-t border-purple-200">
+                                  <div className="flex items-center gap-1.5 mb-1.5">
+                                    <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+                                    <span className="text-xs font-semibold text-purple-700">Follow-up</span>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {followUpResponse.map((line, i) => (
+                                      <div key={i} className="flex items-start gap-2 text-xs text-purple-700">
+                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-purple-400 shrink-0" />
+                                        <span>{line}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Follow-up loading skeleton */}
+                            {isFollowingUp && (
+                              <div className="px-4 pb-3">
+                                <div className="pt-2 border-t border-purple-200 space-y-2 animate-pulse">
+                                  <div className="h-3 rounded bg-purple-200 w-3/4" />
+                                  <div className="h-3 rounded bg-purple-200 w-1/2" />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Follow-up input */}
+                            {!isFollowingUp && (
+                              <div className="px-4 pb-3">
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    ref={followUpInputRef}
+                                    value={followUpInput}
+                                    onChange={(e) => setFollowUpInput(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === "Enter") handleFollowUp(); }}
+                                    placeholder={readinessCheck.promptChips[placeholderIndex % readinessCheck.promptChips.length] || "Ask about your bid..."}
+                                    className="flex-1 text-xs px-2.5 py-1.5 rounded-md border border-purple-300 bg-white text-purple-900 placeholder-purple-300 focus:outline-none focus:ring-1 focus:ring-purple-400 transition-colors"
+                                  />
+                                  <button
+                                    onClick={handleFollowUp}
+                                    disabled={!followUpInput.trim()}
+                                    className="flex items-center justify-center h-7 w-7 rounded-md bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white transition-colors"
+                                  >
+                                    <Send className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+
+                    {/* ===== Bid Readiness Score (original — when flag is off) ===== */}
                     {(isImprovingBid || bidScore !== null) && (
                       <div className="border-b border-border">
                         {isImprovingBid ? (
@@ -1559,7 +1846,7 @@ export function BidSubmissionModal({
                 <div className="flex items-center gap-3">
                   <Button
                     variant="outline"
-                    onClick={() => { setStep("upload"); setBidScore(null); setScoreBreakdownOpen(false); setIsImprovingBid(false); setFollowUpInput(""); setIsFollowingUp(false); setFollowUpResponse(null); }}
+                    onClick={() => { setStep("upload"); setBidScore(null); setScoreBreakdownOpen(false); setIsImprovingBid(false); setFollowUpInput(""); setIsFollowingUp(false); setFollowUpResponse(null); setIsReadinessChecking(false); setReadinessCheck(null); setReadinessExpanded(null); }}
                   >
                     Back
                   </Button>
