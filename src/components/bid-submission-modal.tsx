@@ -357,7 +357,7 @@ export function BidSubmissionModal({
       setIsAnalyzing(false);
 
       // Auto-trigger bid analysis after document extraction completes
-      const readinessCheckEnabled = getFlag("bid-readiness-check");
+      const readinessCheckEnabled = getFlag("bid-readiness-check") || getFlag("bid-readiness-check-plus");
 
       if (readinessCheckEnabled) {
         // Feature-flagged: Bid Readiness Check (scope alignment)
@@ -542,7 +542,7 @@ export function BidSubmissionModal({
       }
       setIsAnalyzing(false);
 
-      const readinessCheckEnabled = getFlag("bid-readiness-check");
+      const readinessCheckEnabled = getFlag("bid-readiness-check") || getFlag("bid-readiness-check-plus");
 
       if (readinessCheckEnabled) {
         // Mock readiness check
@@ -1324,7 +1324,8 @@ export function BidSubmissionModal({
                               )}
                             </AnimatePresence>
 
-                            {/* Improve Your Proposal — collapsible section */}
+                            {/* Improve Your Proposal — collapsible section (only with "plus" flag) */}
+                            {getFlag("bid-readiness-check-plus") && (<>
                             <div className="px-4 pb-1">
                               <button
                                 onClick={() => setProposalSectionOpen(!proposalSectionOpen)}
@@ -1431,6 +1432,7 @@ export function BidSubmissionModal({
                                 </motion.div>
                               )}
                             </AnimatePresence>
+                            </>)}
                           </div>
                         ) : null}
                       </div>

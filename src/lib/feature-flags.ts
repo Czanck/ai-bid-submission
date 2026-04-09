@@ -7,6 +7,8 @@ export interface FeatureFlag {
   label: string;
   description: string;
   defaultValue: boolean;
+  /** Flags in the same exclusion group are mutually exclusive */
+  exclusionGroup?: string;
 }
 
 // ──────────────────────────────────────────────
@@ -15,9 +17,17 @@ export interface FeatureFlag {
 export const FEATURE_FLAGS: FeatureFlag[] = [
   {
     id: "bid-readiness-check",
-    label: "Bid Readiness Check + Proposal Improvement",
-    description: "Replace the scored bid readiness section with a scope-alignment check that compares bid files against project files",
+    label: "Bid Readiness Check",
+    description: "Show only the scope-alignment check (no proposal improvement section)",
     defaultValue: false,
+    exclusionGroup: "readiness",
+  },
+  {
+    id: "bid-readiness-check-plus",
+    label: "Bid Readiness Check + Proposal Improvement",
+    description: "Scope-alignment check plus AI writing feedback and follow-up questions",
+    defaultValue: false,
+    exclusionGroup: "readiness",
   },
 ];
 
@@ -59,6 +69,17 @@ export function useFeatureFlags() {
   const toggle = useCallback((id: string) => {
     setValues((prev) => {
       const next = { ...prev, [id]: !prev[id] };
+      // Mutual exclusion: if turning on, turn off others in the same group
+      if (next[id]) {
+        const flag = FEATURE_FLAGS.find((f) => f.id === id);
+        if (flag?.exclusionGroup) {
+          for (const other of FEATURE_FLAGS) {
+            if (other.id !== id && other.exclusionGroup === flag.exclusionGroup) {
+              next[other.id] = false;
+            }
+          }
+        }
+      }
       saveFlags(next);
       return next;
     });
