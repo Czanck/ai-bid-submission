@@ -15,7 +15,7 @@ export interface FeatureFlag {
 export const FEATURE_FLAGS: FeatureFlag[] = [
   {
     id: "bid-readiness-check",
-    label: "Bid Readiness Check",
+    label: "Bid Readiness Check + Proposal Improvement",
     description: "Replace the scored bid readiness section with a scope-alignment check that compares bid files against project files",
     defaultValue: false,
   },
