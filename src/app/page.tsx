@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BidSubmissionModal } from "@/components/bid-submission-modal";
 import { BidBoard } from "@/components/bid-board";
+import { AskAiPanel } from "@/components/ask-ai-panel";
 import { ImportProjectModal } from "@/components/import-project-modal";
 import { PlanHubShell } from "@/components/planhub-shell";
 import { dummyProject, project2, gcList, gcList2 } from "@/data/dummy-project";
@@ -76,6 +77,7 @@ export default function Home() {
   const [modalOpen, setModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "files" | "submit-bid" | "track-bid">("overview");
   const [bidSubmitted, setBidSubmitted] = useState(false);
+  const [askAiOpen, setAskAiOpen] = useState(false);
   const bidFooterRef = useRef<HTMLDivElement>(null);
   const [showAllTrades, setShowAllTrades] = useState(false);
   const [gcExpanded, setGcExpanded] = useState<string | null>(null);
@@ -105,6 +107,7 @@ export default function Home() {
     if (navId === "bidboard") {
       setActiveView("bidboard");
       setDynamicProject(null);
+      setAskAiOpen(false);
     } else if (navId === "project1" || navId === "project2") {
       setActiveView("project");
       setActiveProject(navId);
@@ -113,6 +116,7 @@ export default function Home() {
       setShowAllTrades(false);
       setGcExpanded(null);
       setModalOpen(false);
+      setAskAiOpen(false);
     }
   };
 
@@ -208,7 +212,14 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <button className="flex items-center gap-1.5 px-3 h-8 rounded-md text-xs font-medium text-muted-foreground hover:bg-accent transition-colors">
+            <button
+              onClick={() => setAskAiOpen(!askAiOpen)}
+              className={`flex items-center gap-1.5 px-3 h-8 rounded-md text-xs font-medium transition-colors ${
+                askAiOpen
+                  ? "bg-emerald-100 text-emerald-700"
+                  : "text-muted-foreground hover:bg-accent"
+              }`}
+            >
               <Sparkles className="h-3.5 w-3.5" />
               Ask AI
             </button>
@@ -545,6 +556,13 @@ export default function Home() {
         projectName={isDynamic ? displayProject.name : `${currentProject.id} - ${currentProject.name}`}
         gcName={isDynamic ? "General Contractor" : currentGcList[0].name}
         gcEmail={isDynamic ? "bids@contractor.com" : currentGcList[0].email}
+        projectId={isDynamic ? dynamicProject.id : activeProject}
+        projectContext={isDynamic ? dynamicProject.projectContext : undefined}
+      />
+
+      <AskAiPanel
+        open={askAiOpen}
+        onClose={() => setAskAiOpen(false)}
         projectId={isDynamic ? dynamicProject.id : activeProject}
         projectContext={isDynamic ? dynamicProject.projectContext : undefined}
       />
