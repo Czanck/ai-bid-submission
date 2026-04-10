@@ -65,6 +65,8 @@ interface BidSubmissionModalProps {
   onSubmitComplete?: () => void;
   /** In page mode, portal the review footer into this element instead of rendering inline */
   footerPortalRef?: React.RefObject<HTMLDivElement | null>;
+  /** Called when user clicks "Source" on a misaligned item */
+  onOpenSource?: (trade: string, detail: string) => void;
 }
 
 const statusConfig: Record<
@@ -138,6 +140,7 @@ export function BidSubmissionModal({
   mode = "modal",
   onSubmitComplete,
   footerPortalRef,
+  onOpenSource,
 }: BidSubmissionModalProps) {
   const applyTemplate = useCallback(
     (tpl: string) => {
@@ -1330,6 +1333,7 @@ export function BidSubmissionModal({
                                                   )}
                                                 </button>
                                                 <button
+                                                  onClick={() => onOpenSource?.(item.trade, item.detail)}
                                                   className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md border border-border bg-white text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
                                                 >
                                                   <FileText className="h-3 w-3" /> Source

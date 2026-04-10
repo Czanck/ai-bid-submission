@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { BidSubmissionModal } from "@/components/bid-submission-modal";
 import { BidBoard } from "@/components/bid-board";
 import { AskAiPanel } from "@/components/ask-ai-panel";
+import { FileViewerTab } from "@/components/file-viewer-tab";
 import { ImportProjectModal } from "@/components/import-project-modal";
 import { PlanHubShell } from "@/components/planhub-shell";
 import { dummyProject, project2, gcList, gcList2 } from "@/data/dummy-project";
@@ -75,9 +76,11 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 
 export default function Home() {
   const [modalOpen, setModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "files" | "submit-bid" | "track-bid">("overview");
+  const [activeTab, setActiveTab] = useState<string>("overview");
   const [bidSubmitted, setBidSubmitted] = useState(false);
   const [askAiOpen, setAskAiOpen] = useState(false);
+  const [openFileTabs, setOpenFileTabs] = useState<{ id: string; name: string; trade: string; detail: string }[]>([]);
+  const fileTabCounter = useRef(0);
   const bidFooterRef = useRef<HTMLDivElement>(null);
   const [showAllTrades, setShowAllTrades] = useState(false);
   const [gcExpanded, setGcExpanded] = useState<string | null>(null);
@@ -147,7 +150,35 @@ export default function Home() {
     setActiveTab("overview");
   };
 
-  const footer = activeTab === "track-bid" ? undefined
+  const handleOpenSource = (trade: string, detail: string) => {
+    // Generate a dummy spec file name from the trade
+    const specNames: Record<string, string> = {
+      "Lighting & Controls": "26 51 00 Interior Lighting Specs.pdf",
+      "Low Voltage": "27 10 00 Structured Cabling Specs.pdf",
+      "Electrical Rough-In": "26 05 00 General Electrical Specs.pdf",
+      "Fire Alarm": "28 31 00 Fire Detection Specs.pdf",
+    };
+    const fileName = specNames[trade] || `${trade} Specifications.pdf`;
+    const id = `file-${fileTabCounter.current++}`;
+    // Don't re-open if same trade is already open
+    const existing = openFileTabs.find(t => t.trade === trade);
+    if (existing) {
+      setActiveTab(existing.id);
+      return;
+    }
+    setOpenFileTabs(prev => [...prev, { id, name: fileName, trade, detail }]);
+    setActiveTab(id);
+  };
+
+  const handleCloseFileTab = (tabId: string) => {
+    setOpenFileTabs(prev => prev.filter(t => t.id !== tabId));
+    // If we're closing the active tab, go back to submit-bid
+    if (activeTab === tabId) {
+      setActiveTab("submit-bid");
+    }
+  };
+
+  const footer = activeTab === "track-bid" || activeTab.startsWith("file-") ? undefined
     : activeTab === "submit-bid" ? (
       <div ref={bidFooterRef} className="shrink-0" />
     ) : (
@@ -246,11 +277,11 @@ export default function Home() {
 
       {/* Tabs */}
       <div className="bg-card border-b border-border px-6">
-        <div className="flex gap-6">
-          {(activeTab === "submit-bid") && (
+        <div className="flex gap-0">
+          {(activeTab === "submit-bid" || activeTab.startsWith("file-")) && (
             <button
               onClick={() => setActiveTab("submit-bid")}
-              className={`py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`py-3 px-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "submit-bid"
                   ? "border-[#00B894] text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -262,7 +293,7 @@ export default function Home() {
           {bidSubmitted && (
             <button
               onClick={() => setActiveTab("track-bid")}
-              className={`py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`py-3 px-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "track-bid"
                   ? "border-[#00B894] text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -273,7 +304,7 @@ export default function Home() {
           )}
           <button
             onClick={() => setActiveTab("overview")}
-            className={`py-3 text-sm font-medium border-b-2 transition-colors ${
+            className={`py-3 px-3 text-sm font-medium border-b-2 transition-colors ${
               activeTab === "overview"
                 ? "border-[#00B894] text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -283,7 +314,7 @@ export default function Home() {
           </button>
           <button
             onClick={() => setActiveTab("files")}
-            className={`py-3 text-sm font-medium border-b-2 transition-colors ${
+            className={`py-3 px-3 text-sm font-medium border-b-2 transition-colors ${
               activeTab === "files"
                 ? "border-[#00B894] text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -291,12 +322,33 @@ export default function Home() {
           >
             Files
           </button>
+          {/* Open file tabs */}
+          {openFileTabs.map((ft) => (
+            <div
+              key={ft.id}
+              className={`group relative flex items-center gap-1 py-3 px-3 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+                activeTab === ft.id
+                  ? "border-[#00B894] text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setActiveTab(ft.id)}
+            >
+              <span className="truncate max-w-[140px]">{ft.name.replace(".pdf", "").slice(0, 16)}...</span>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleCloseFileTab(ft.id); }}
+                className="h-4 w-4 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-accent transition-all ml-0.5 shrink-0"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
         </div>
       </div>
 
       {/* Content */}
-      {activeTab === "submit-bid" ? (
-        <div className="bg-[var(--bg-surface,#F5F7F9)] h-full">
+      {/* Submit Bid — stays mounted (hidden) when file tab is open so user doesn't lose progress */}
+      {(activeTab === "submit-bid" || activeTab.startsWith("file-")) && (
+        <div className={`bg-[var(--bg-surface,#F5F7F9)] h-full ${activeTab !== "submit-bid" ? "hidden" : ""}`}>
           <BidSubmissionModal
             open={true}
             onOpenChange={() => setActiveTab("overview")}
@@ -307,13 +359,21 @@ export default function Home() {
             projectContext={isDynamic ? dynamicProject.projectContext : undefined}
             mode="page"
             footerPortalRef={bidFooterRef}
+            onOpenSource={handleOpenSource}
             onSubmitComplete={() => {
               setBidSubmitted(true);
               setActiveTab("track-bid");
             }}
           />
         </div>
-      ) : activeTab === "track-bid" ? (
+      )}
+      {/* File viewer tabs */}
+      {openFileTabs.map((ft) => (
+        <div key={ft.id} className={`h-full ${activeTab !== ft.id ? "hidden" : ""}`}>
+          <FileViewerTab fileName={ft.name} highlightText={ft.detail} />
+        </div>
+      ))}
+      {activeTab === "track-bid" ? (
         <div className="p-6 bg-[var(--bg-surface,#F5F7F9)]">
           <BidTracker projectName={isDynamic ? displayProject.name : `${currentProject.id} - ${currentProject.name}`} gcName={isDynamic ? "General Contractor" : currentGcList[0].name} />
         </div>
