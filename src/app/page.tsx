@@ -180,6 +180,14 @@ export default function Home() {
   return (
     <PlanHubShell
       footer={activeView === "project" ? footer : undefined}
+      rightPanel={activeView === "project" ? (
+        <AskAiPanel
+          open={askAiOpen}
+          onClose={() => setAskAiOpen(false)}
+          projectId={isDynamic ? dynamicProject.id : activeProject}
+          projectContext={isDynamic ? dynamicProject.projectContext : undefined}
+        />
+      ) : undefined}
       onNavClick={handleNavClick}
       activeProject={activeView === "project" && !isDynamic ? activeProject : undefined}
       activeView={activeView}
@@ -560,12 +568,6 @@ export default function Home() {
         projectContext={isDynamic ? dynamicProject.projectContext : undefined}
       />
 
-      <AskAiPanel
-        open={askAiOpen}
-        onClose={() => setAskAiOpen(false)}
-        projectId={isDynamic ? dynamicProject.id : activeProject}
-        projectContext={isDynamic ? dynamicProject.projectContext : undefined}
-      />
       </>
       )}
     </PlanHubShell>

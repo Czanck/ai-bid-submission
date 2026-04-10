@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { X, Sparkles, Send, Loader2 } from "lucide-react";
 
 interface ChatMessage {
@@ -83,15 +82,11 @@ export function AskAiPanel({ open, onClose, projectId, projectContext }: AskAiPa
     sendMessage(input);
   };
 
+  if (!open) return null;
+
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          initial={{ x: "100%" }}
-          animate={{ x: 0 }}
-          exit={{ x: "100%" }}
-          transition={{ type: "spring", damping: 30, stiffness: 300 }}
-          className="fixed top-0 right-0 h-full w-[380px] bg-card border-l border-border shadow-xl z-50 flex flex-col"
+        <div
+          className="w-[380px] shrink-0 bg-card border-l border-border flex flex-col h-full"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-gradient-to-r from-emerald-600 to-teal-600 text-white">
@@ -199,8 +194,6 @@ export function AskAiPanel({ open, onClose, projectId, projectContext }: AskAiPa
               </button>
             </div>
           </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        </div>
   );
 }

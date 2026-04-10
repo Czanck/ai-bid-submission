@@ -64,12 +64,14 @@ function NavItem({
 export function PlanHubShell({
   children,
   footer,
+  rightPanel,
   onNavClick,
   activeProject,
   activeView,
 }: {
   children: React.ReactNode;
   footer?: React.ReactNode;
+  rightPanel?: React.ReactNode;
   onNavClick?: (navId: string) => void;
   activeProject?: string;
   activeView?: string;
@@ -216,10 +218,13 @@ export function PlanHubShell({
           </div>
         </header>
 
-        {/* Content + optional footer */}
-        <div className="flex-1 flex flex-col min-h-0">
-          <main className="flex-1 overflow-y-auto">{children}</main>
-          {footer && footer}
+        {/* Content + optional footer + optional right panel */}
+        <div className="flex-1 flex min-h-0">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0">
+            <main className="flex-1 overflow-y-auto">{children}</main>
+            {footer && footer}
+          </div>
+          {rightPanel && rightPanel}
         </div>
       </div>
     </div>
