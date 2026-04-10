@@ -29,6 +29,12 @@ export const FEATURE_FLAGS: FeatureFlag[] = [
     defaultValue: false,
     exclusionGroup: "readiness",
   },
+  {
+    id: "tabular-submission",
+    label: "Tabular Submission",
+    description: "Submit bids in a page tab instead of a modal dialog",
+    defaultValue: false,
+  },
 ];
 
 const STORAGE_KEY = "feature-flags";

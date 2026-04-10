@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload,
@@ -60,6 +61,8 @@ interface BidSubmissionModalProps {
   gcEmail?: string;
   projectId?: string;
   projectContext?: string;
+  mode?: "modal" | "page";
+  onSubmitComplete?: () => void;
 }
 
 const statusConfig: Record<
@@ -130,6 +133,8 @@ export function BidSubmissionModal({
   gcEmail = "bids@turnerconstruction.com",
   projectId = "project1",
   projectContext,
+  mode = "modal",
+  onSubmitComplete,
 }: BidSubmissionModalProps) {
   const applyTemplate = useCallback(
     (tpl: string) => {
@@ -198,6 +203,7 @@ export function BidSubmissionModal({
   const modalContentRef = useRef<HTMLDivElement>(null);
   const [showEnvelopeAnimation, setShowEnvelopeAnimation] = useState(false);
   const [modalRect, setModalRect] = useState<DOMRect | null>(null);
+  const [showBidToast, setShowBidToast] = useState(false);
 
   // Cycle processing messages
   useEffect(() => {
@@ -462,20 +468,25 @@ export function BidSubmissionModal({
   }, []);
 
   const handleSubmit = useCallback(() => {
-    // Capture modal rect before starting animation
+    if (mode === "page") {
+      onSubmitComplete?.();
+      return;
+    }
     if (modalContentRef.current) {
       setModalRect(modalContentRef.current.getBoundingClientRect());
     }
     setShowEnvelopeAnimation(true);
-  }, []);
+  }, [mode, onSubmitComplete]);
 
   const handleEnvelopeComplete = useCallback(() => {
     setShowEnvelopeAnimation(false);
     setModalRect(null);
-    setStep("submitted");
+    // Close dialog immediately — no "submitted" step
+    handleOpenChange(false);
+    // Show toast after a brief delay so the dialog is gone
     setTimeout(() => {
-      handleOpenChange(false);
-    }, 2500);
+      setShowBidToast(true);
+    }, 100);
   }, [handleOpenChange]);
 
   // DEV-ONLY: skip to review with mock data (progressive loading)
@@ -662,15 +673,8 @@ export function BidSubmissionModal({
     <div className={`animate-pulse rounded-md bg-muted ${className}`} />
   );
 
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent
-        ref={modalContentRef}
-        className="!max-w-[min(900px,calc(100vw-2rem))] w-full h-[80vh] overflow-x-hidden overflow-y-auto p-0"
-        showCloseButton={!showEnvelopeAnimation}
-        style={showEnvelopeAnimation ? { opacity: 0, pointerEvents: "none" } : undefined}
-      >
-        <AnimatePresence mode="wait">
+  const content = (
+    <AnimatePresence mode="wait">
           {/* ===== UPLOAD STEP ===== */}
           {step === "upload" && (
             <motion.div
@@ -681,11 +685,15 @@ export function BidSubmissionModal({
               transition={{ duration: 0.2 }}
               className="p-6 overflow-x-hidden"
             >
-              <DialogHeader>
-                <DialogTitle className="text-xl font-semibold text-foreground">
-                  Submit Bid
-                </DialogTitle>
-              </DialogHeader>
+              {mode === "page" ? (
+                <h2 className="text-xl font-semibold text-foreground">Submit Bid</h2>
+              ) : (
+                <DialogHeader>
+                  <DialogTitle className="text-xl font-semibold text-foreground">
+                    Submit Bid
+                  </DialogTitle>
+                </DialogHeader>
+              )}
 
               <div className="mt-4">
                 {/* Drop zone */}
@@ -883,9 +891,13 @@ export function BidSubmissionModal({
             >
               {/* Fixed header */}
               <div className="px-6 pt-6 pb-4 shrink-0">
-                <DialogHeader>
-                  <DialogTitle className="text-xl">Review & Submit</DialogTitle>
-                </DialogHeader>
+                {mode === "page" ? (
+                  <h2 className="text-xl font-semibold text-foreground">Review & Submit</h2>
+                ) : (
+                  <DialogHeader>
+                    <DialogTitle className="text-xl">Review & Submit</DialogTitle>
+                  </DialogHeader>
+                )}
               </div>
 
               {/* Scrollable body */}
@@ -1935,46 +1947,29 @@ export function BidSubmissionModal({
             </motion.div>
           )}
 
-          {/* ===== SUBMITTED STEP ===== */}
-          {step === "submitted" && (
-            <motion.div
-              key="submitted"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.3 }}
-              className="p-6 flex flex-col items-center justify-center min-h-[300px]"
-            >
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{
-                  type: "spring",
-                  stiffness: 200,
-                  damping: 15,
-                  delay: 0.1,
-                }}
-              >
-                <div className="h-16 w-16 rounded-full bg-success-surface flex items-center justify-center">
-                  <CheckCircle2 className="h-8 w-8 text-success-foreground" />
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="text-center mt-4"
-              >
-                <h3 className="text-lg font-semibold text-foreground">
-                  Bid Submitted Successfully
-                </h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Your bid has been sent to {gcName}
-                </p>
-              </motion.div>
-            </motion.div>
-          )}
         </AnimatePresence>
+  );
+
+  if (mode === "page") {
+    return (
+      <div className="h-full overflow-y-auto">
+        <div className="max-w-[900px] mx-auto p-0">
+          {content}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent
+        ref={modalContentRef}
+        className="!max-w-[min(900px,calc(100vw-2rem))] w-full h-[80vh] overflow-x-hidden overflow-y-auto p-0"
+        showCloseButton={!showEnvelopeAnimation}
+        style={showEnvelopeAnimation ? { opacity: 0, pointerEvents: "none" } : undefined}
+      >
+        {content}
       </DialogContent>
 
       {showEnvelopeAnimation && modalRect && (
@@ -1984,5 +1979,38 @@ export function BidSubmissionModal({
         />
       )}
     </Dialog>
+
+    {/* Toast notification — flies in from right, auto-dismisses after 5s */}
+    <AnimatePresence>
+      {showBidToast && (
+        <BidSubmittedToast onDismiss={() => setShowBidToast(false)} />
+      )}
+    </AnimatePresence>
+    </>
+  );
+}
+
+function BidSubmittedToast({ onDismiss }: { onDismiss: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 5000);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+
+  return createPortal(
+    <motion.div
+      initial={{ x: 400, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: 400, opacity: 0 }}
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+      className="fixed top-4 right-4 z-[10000] flex items-center gap-3 rounded-lg border bg-white px-4 py-3 shadow-lg"
+    >
+      <div className="h-8 w-8 rounded-full bg-success-surface flex items-center justify-center flex-shrink-0">
+        <CheckCircle2 className="h-4 w-4 text-success-foreground" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-foreground">Bid Submitted Successfully</p>
+      </div>
+    </motion.div>,
+    document.body
   );
 }

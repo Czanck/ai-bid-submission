@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BidSubmissionModal } from "@/components/bid-submission-modal";
@@ -10,6 +10,7 @@ import { PlanHubShell } from "@/components/planhub-shell";
 import { dummyProject, project2, gcList, gcList2 } from "@/data/dummy-project";
 import { getAllProjects } from "@/lib/project-store";
 import type { StoredProject } from "@/lib/types";
+import { getFlag } from "@/lib/feature-flags";
 import {
   Calendar,
   Sparkles,
@@ -29,6 +30,10 @@ import {
   Tag,
   Send,
   Building2,
+  CheckCircle2,
+  Package,
+  Truck,
+  Clock,
 } from "lucide-react";
 
 function SectionCard({
@@ -69,7 +74,8 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 
 export default function Home() {
   const [modalOpen, setModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "files">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "files" | "submit-bid" | "track-bid">("overview");
+  const [bidSubmitted, setBidSubmitted] = useState(false);
   const [showAllTrades, setShowAllTrades] = useState(false);
   const [gcExpanded, setGcExpanded] = useState<string | null>(null);
   const [activeProject, setActiveProject] = useState<"project1" | "project2">("project1");
@@ -136,7 +142,7 @@ export default function Home() {
     setActiveTab("overview");
   };
 
-  const footer = (
+  const footer = activeTab === "submit-bid" || activeTab === "track-bid" ? undefined : (
     <div className="border-t border-border bg-card px-6 py-3 flex items-center justify-end gap-3 shrink-0">
       {!isDynamic && (
         <>
@@ -150,7 +156,13 @@ export default function Home() {
           </Button>
         </>
       )}
-      <Button onClick={() => setModalOpen(true)}>
+      <Button onClick={() => {
+        if (getFlag("tabular-submission")) {
+          setActiveTab("submit-bid");
+        } else {
+          setModalOpen(true);
+        }
+      }}>
         <Send className="h-4 w-4 mr-1.5" />
         Submit Bid
       </Button>
@@ -212,6 +224,30 @@ export default function Home() {
       {/* Tabs */}
       <div className="bg-card border-b border-border px-6">
         <div className="flex gap-6">
+          {(activeTab === "submit-bid") && (
+            <button
+              onClick={() => setActiveTab("submit-bid")}
+              className={`py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "submit-bid"
+                  ? "border-[#00B894] text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Submit Bid
+            </button>
+          )}
+          {bidSubmitted && (
+            <button
+              onClick={() => setActiveTab("track-bid")}
+              className={`py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "track-bid"
+                  ? "border-[#00B894] text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Track Bid
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("overview")}
             className={`py-3 text-sm font-medium border-b-2 transition-colors ${
@@ -236,7 +272,28 @@ export default function Home() {
       </div>
 
       {/* Content */}
-      {activeTab === "overview" ? (
+      {activeTab === "submit-bid" ? (
+        <div className="bg-[var(--bg-surface,#F5F7F9)] h-full">
+          <BidSubmissionModal
+            open={true}
+            onOpenChange={() => setActiveTab("overview")}
+            projectName={isDynamic ? displayProject.name : `${currentProject.id} - ${currentProject.name}`}
+            gcName={isDynamic ? "General Contractor" : currentGcList[0].name}
+            gcEmail={isDynamic ? "bids@contractor.com" : currentGcList[0].email}
+            projectId={isDynamic ? dynamicProject.id : activeProject}
+            projectContext={isDynamic ? dynamicProject.projectContext : undefined}
+            mode="page"
+            onSubmitComplete={() => {
+              setBidSubmitted(true);
+              setActiveTab("track-bid");
+            }}
+          />
+        </div>
+      ) : activeTab === "track-bid" ? (
+        <div className="p-6 bg-[var(--bg-surface,#F5F7F9)]">
+          <BidTracker projectName={isDynamic ? displayProject.name : `${currentProject.id} - ${currentProject.name}`} gcName={isDynamic ? "General Contractor" : currentGcList[0].name} />
+        </div>
+      ) : activeTab === "overview" ? (
         <div className="p-6 bg-[var(--bg-surface,#F5F7F9)]">
           <div className="flex gap-6 items-start">
             {/* Left column */}
@@ -489,5 +546,80 @@ export default function Home() {
       </>
       )}
     </PlanHubShell>
+  );
+}
+
+function BidTracker({ projectName, gcName }: { projectName: string; gcName: string }) {
+  const confirmationId = useMemo(
+    () => "BID-" + Math.random().toString(36).substring(2, 8).toUpperCase(),
+    []
+  );
+  const submittedTime = useMemo(
+    () => new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
+    []
+  );
+
+  const steps = [
+    { label: "Bid Submitted", description: "Your bid has been submitted successfully", time: "Just now", icon: CheckCircle2, done: true },
+    { label: "Received by GC", description: `${gcName} has received your bid package`, time: "Estimated: 1-2 hours", icon: Package, done: false },
+    { label: "Under Review", description: "Your bid is being reviewed by the project team", time: "Estimated: 2-5 business days", icon: Clock, done: false },
+    { label: "Decision Made", description: "The GC will notify you of their decision", time: "Estimated: 1-2 weeks", icon: Truck, done: false },
+  ];
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      {/* Success header */}
+      <div className="bg-card border border-border rounded-lg p-6 text-center">
+        <div className="mx-auto h-16 w-16 rounded-full bg-success-surface flex items-center justify-center mb-4">
+          <CheckCircle2 className="h-8 w-8 text-success-foreground" />
+        </div>
+        <h2 className="text-xl font-semibold text-foreground">Bid Submitted Successfully</h2>
+        <p className="text-sm text-muted-foreground mt-1">{projectName}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">Submitted to {gcName}</p>
+      </div>
+
+      {/* Tracking timeline */}
+      <div className="bg-card border border-border rounded-lg p-6">
+        <h3 className="text-sm font-semibold text-foreground mb-6">Bid Status</h3>
+        <div className="space-y-0">
+          {steps.map((s, i) => {
+            const Icon = s.icon;
+            return (
+              <div key={i} className="flex gap-4">
+                {/* Timeline line + dot */}
+                <div className="flex flex-col items-center">
+                  <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${
+                    s.done ? "bg-success-surface" : "bg-muted"
+                  }`}>
+                    <Icon className={`h-4 w-4 ${s.done ? "text-success-foreground" : "text-muted-foreground"}`} />
+                  </div>
+                  {i < steps.length - 1 && (
+                    <div className={`w-0.5 h-12 ${s.done ? "bg-success-foreground/30" : "bg-border"}`} />
+                  )}
+                </div>
+                {/* Content */}
+                <div className="pt-1 pb-4">
+                  <p className={`text-sm font-medium ${s.done ? "text-foreground" : "text-muted-foreground"}`}>{s.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{s.description}</p>
+                  <p className={`text-xs mt-1 ${s.done ? "text-success-foreground font-medium" : "text-muted-foreground"}`}>{s.time}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Quick info cards */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-card border border-border rounded-lg p-4">
+          <p className="text-xs text-muted-foreground">Confirmation #</p>
+          <p className="text-sm font-mono font-medium text-foreground mt-1">{confirmationId}</p>
+        </div>
+        <div className="bg-card border border-border rounded-lg p-4">
+          <p className="text-xs text-muted-foreground">Submitted</p>
+          <p className="text-sm font-medium text-foreground mt-1">{submittedTime}</p>
+        </div>
+      </div>
+    </div>
   );
 }
