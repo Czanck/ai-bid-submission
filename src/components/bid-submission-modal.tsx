@@ -1302,32 +1302,39 @@ export function BidSubmissionModal({
                                                 <p className="text-xs text-muted-foreground leading-relaxed">{item.fix}</p>
                                               </div>
                                             )}
-                                            {/* Mark as Aligned / Undo */}
+                                            {/* Mark as Aligned / Undo + Source */}
                                             {item.status !== "aligned" && (
-                                              <button
-                                                onClick={() => {
-                                                  setReadinessOverrides((prev) => {
-                                                    const next = new Set(prev);
-                                                    if (next.has(i)) {
-                                                      next.delete(i);
-                                                    } else {
-                                                      next.add(i);
-                                                    }
-                                                    return next;
-                                                  });
-                                                }}
-                                                className={`mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md border shadow-sm transition-colors ${
-                                                  isOverridden
-                                                    ? "border-border bg-white text-muted-foreground hover:bg-red-50 hover:text-red-600 hover:border-red-200"
-                                                    : "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
-                                                }`}
-                                              >
-                                                {isOverridden ? (
-                                                  <><X className="h-3 w-3" /> Undo</>
-                                                ) : (
-                                                  <><CheckCircle2 className="h-3 w-3" /> Mark as Aligned</>
-                                                )}
-                                              </button>
+                                              <div className="mt-2 flex items-center gap-2">
+                                                <button
+                                                  onClick={() => {
+                                                    setReadinessOverrides((prev) => {
+                                                      const next = new Set(prev);
+                                                      if (next.has(i)) {
+                                                        next.delete(i);
+                                                      } else {
+                                                        next.add(i);
+                                                      }
+                                                      return next;
+                                                    });
+                                                  }}
+                                                  className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md border shadow-sm transition-colors ${
+                                                    isOverridden
+                                                      ? "border-border bg-white text-muted-foreground hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                                                      : "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
+                                                  }`}
+                                                >
+                                                  {isOverridden ? (
+                                                    <><X className="h-3 w-3" /> Undo</>
+                                                  ) : (
+                                                    <><CheckCircle2 className="h-3 w-3" /> Mark as Aligned</>
+                                                  )}
+                                                </button>
+                                                <button
+                                                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md border border-border bg-white text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
+                                                >
+                                                  <FileText className="h-3 w-3" /> Source
+                                                </button>
+                                              </div>
                                             )}
                                           </div>
                                         </div>
