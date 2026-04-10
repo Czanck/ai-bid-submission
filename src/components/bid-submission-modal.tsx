@@ -1975,8 +1975,10 @@ export function BidSubmissionModal({
   if (mode === "page") {
     return (
       <div className="h-full overflow-y-auto">
-        <div className="max-w-[900px] mx-auto p-0">
-          {content}
+        <div className="max-w-[900px] mx-auto p-6">
+          <div className="bg-card border border-border rounded-lg">
+            {content}
+          </div>
         </div>
       </div>
     );
