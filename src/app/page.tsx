@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BidSubmissionModal } from "@/components/bid-submission-modal";
@@ -76,6 +76,7 @@ export default function Home() {
   const [modalOpen, setModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "files" | "submit-bid" | "track-bid">("overview");
   const [bidSubmitted, setBidSubmitted] = useState(false);
+  const bidFooterRef = useRef<HTMLDivElement>(null);
   const [showAllTrades, setShowAllTrades] = useState(false);
   const [gcExpanded, setGcExpanded] = useState<string | null>(null);
   const [activeProject, setActiveProject] = useState<"project1" | "project2">("project1");
@@ -142,7 +143,10 @@ export default function Home() {
     setActiveTab("overview");
   };
 
-  const footer = activeTab === "submit-bid" || activeTab === "track-bid" ? undefined : (
+  const footer = activeTab === "track-bid" ? undefined
+    : activeTab === "submit-bid" ? (
+      <div ref={bidFooterRef} className="shrink-0" />
+    ) : (
     <div className="border-t border-border bg-card px-6 py-3 flex items-center justify-end gap-3 shrink-0">
       {!isDynamic && (
         <>
@@ -283,6 +287,7 @@ export default function Home() {
             projectId={isDynamic ? dynamicProject.id : activeProject}
             projectContext={isDynamic ? dynamicProject.projectContext : undefined}
             mode="page"
+            footerPortalRef={bidFooterRef}
             onSubmitComplete={() => {
               setBidSubmitted(true);
               setActiveTab("track-bid");

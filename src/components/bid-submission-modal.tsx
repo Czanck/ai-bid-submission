@@ -63,6 +63,8 @@ interface BidSubmissionModalProps {
   projectContext?: string;
   mode?: "modal" | "page";
   onSubmitComplete?: () => void;
+  /** In page mode, portal the review footer into this element instead of rendering inline */
+  footerPortalRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 const statusConfig: Record<
@@ -135,6 +137,7 @@ export function BidSubmissionModal({
   projectContext,
   mode = "modal",
   onSubmitComplete,
+  footerPortalRef,
 }: BidSubmissionModalProps) {
   const applyTemplate = useCallback(
     (tpl: string) => {
@@ -1886,64 +1889,83 @@ export function BidSubmissionModal({
                 </div>
               </div>
 
-              {/* Sticky footer */}
-              <div className="sticky bottom-0 border-t border-border bg-card px-6 py-3 flex items-center justify-between z-10">
-                <div className="flex items-center gap-3">
-                  {!isEmailConnected ? (
-                    <>
-                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <Building2 className="h-4 w-4" />
-                        <span>In-App Only</span>
-                      </div>
-                      <button
-                        onClick={handleConnectEmail}
-                        disabled={isConnectingEmail}
-                        className="text-sm font-medium text-primary hover:underline disabled:opacity-50"
-                      >
-                        {isConnectingEmail ? "Connecting..." : "Connect email"}
-                      </button>
-                    </>
-                  ) : (
-                    <div className="relative group">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-success-surface text-primary text-sm font-medium">
-                          <Mail className="h-3.5 w-3.5" />
-                          Email + In-App
-                        </span>
-                        <span className="text-sm text-muted-foreground">
-                          Sending to GC via email and in-app
-                        </span>
-                      </div>
-                      {/* Tooltip */}
-                      <div className="absolute bottom-full left-0 mb-2 w-72 p-3 rounded-lg bg-foreground text-background text-xs leading-relaxed shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all pointer-events-none z-50">
-                        GCs will receive your bid both in PlanHub and directly in their inbox as an email sent from you.
-                        <div className="absolute top-full left-6 h-0 w-0 border-x-[6px] border-x-transparent border-t-[6px] border-t-foreground" />
-                      </div>
+              {/* Review footer — portaled to shell footer in page mode, sticky inline in modal mode */}
+              {(() => {
+                const footerContent = (
+                  <>
+                    <div className="flex items-center gap-3">
+                      {!isEmailConnected ? (
+                        <>
+                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                            <Building2 className="h-4 w-4" />
+                            <span>In-App Only</span>
+                          </div>
+                          <button
+                            onClick={handleConnectEmail}
+                            disabled={isConnectingEmail}
+                            className="text-sm font-medium text-primary hover:underline disabled:opacity-50"
+                          >
+                            {isConnectingEmail ? "Connecting..." : "Connect email"}
+                          </button>
+                        </>
+                      ) : (
+                        <div className="relative group">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-success-surface text-primary text-sm font-medium">
+                              <Mail className="h-3.5 w-3.5" />
+                              Email + In-App
+                            </span>
+                            <span className="text-sm text-muted-foreground">
+                              Sending to GC via email and in-app
+                            </span>
+                          </div>
+                          {/* Tooltip */}
+                          <div className="absolute bottom-full left-0 mb-2 w-72 p-3 rounded-lg bg-foreground text-background text-xs leading-relaxed shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all pointer-events-none z-50">
+                            GCs will receive your bid both in PlanHub and directly in their inbox as an email sent from you.
+                            <div className="absolute top-full left-6 h-0 w-0 border-x-[6px] border-x-transparent border-t-[6px] border-t-foreground" />
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => { setStep("upload"); setBidScore(null); setScoreBreakdownOpen(false); setIsImprovingBid(false); setFollowUpInput(""); setIsFollowingUp(false); setFollowUpResponse(null); setIsReadinessChecking(false); setReadinessCheck(null); setReadinessExpanded(null); setReadinessOverrides(new Set()); setProposalSectionOpen(true); }}
-                  >
-                    Back
-                  </Button>
-                  <Button onClick={handleSubmit} disabled={isLoading}>
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Analyzing...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="mr-2 h-4 w-4" />
-                        Submit Bid
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
+                    <div className="flex items-center gap-3">
+                      <Button
+                        variant="outline"
+                        onClick={() => { setStep("upload"); setBidScore(null); setScoreBreakdownOpen(false); setIsImprovingBid(false); setFollowUpInput(""); setIsFollowingUp(false); setFollowUpResponse(null); setIsReadinessChecking(false); setReadinessCheck(null); setReadinessExpanded(null); setReadinessOverrides(new Set()); setProposalSectionOpen(true); }}
+                      >
+                        Back
+                      </Button>
+                      <Button onClick={handleSubmit} disabled={isLoading}>
+                        {isLoading ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Analyzing...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="mr-2 h-4 w-4" />
+                            Submit Bid
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </>
+                );
+
+                if (mode === "page" && footerPortalRef?.current) {
+                  return createPortal(
+                    <div className="border-t border-border bg-card px-6 py-3 flex items-center justify-between">
+                      {footerContent}
+                    </div>,
+                    footerPortalRef.current
+                  );
+                }
+
+                return (
+                  <div className="sticky bottom-0 border-t border-border bg-card px-6 py-3 flex items-center justify-between z-10">
+                    {footerContent}
+                  </div>
+                );
+              })()}
             </motion.div>
           )}
 
