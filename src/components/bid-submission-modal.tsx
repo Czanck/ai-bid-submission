@@ -200,6 +200,7 @@ export function BidSubmissionModal({
   const [readinessOverrides, setReadinessOverrides] = useState<Set<number>>(new Set()); // indices of items manually marked aligned
   const [proposalSectionOpen, setProposalSectionOpen] = useState(true);
   const [requirementsExpanded, setRequirementsExpanded] = useState(true);
+  const [tradeBreakdownExpanded, setTradeBreakdownExpanded] = useState(true);
   const [messageTemplate, setMessageTemplate] = useState(
     "Dear {{GC Name}},\n\nPlease find attached our bid submission for {{Project Name}}.\n\nBid Summary:\n- Total Bid Amount: {{Bid Amount}}\n\nBest regards,\n{{Your Company}}"
   );
@@ -265,6 +266,7 @@ export function BidSubmissionModal({
           setShowTemplateEditor(false);
           setHelpExpandedId(null);
           setRequirementsExpanded(true);
+          setTradeBreakdownExpanded(true);
           setIsAnalyzing(false);
           setIsImprovingBid(false);
           setBidScore(null);
@@ -674,6 +676,7 @@ export function BidSubmissionModal({
   }, [projectId, gcName, projectName]);
 
   const isLoading = step === "review" && isAnalyzing;
+  const isSplitView = getFlag("split-view") && mode === "page";
 
   const Skeleton = ({ className = "" }: { className?: string }) => (
     <div className={`animate-pulse rounded-md bg-muted ${className}`} />
@@ -908,7 +911,11 @@ export function BidSubmissionModal({
 
               {/* Scrollable body */}
               <div className="flex-1 px-6 pb-4">
-                <div className="space-y-5">
+                {(() => {
+                  /* ── Section JSX variables for split-view support ── */
+
+                  const toFieldSection = (
+                  <>
                   {/* To field */}
                   <div>
                     <div className="flex items-center justify-between">
@@ -1032,8 +1039,10 @@ export function BidSubmissionModal({
                       />
                     </div>
                   )}
+                  </>
+                  );
 
-                  {/* Bid Amount */}
+                  const bidAmountSection = (
                   <div>
                     <Label htmlFor="bidAmount" className="text-sm font-medium">
                       Bid Amount
@@ -1050,8 +1059,9 @@ export function BidSubmissionModal({
                       />
                     )}
                   </div>
+                  );
 
-                  {/* Subject */}
+                  const subjectSection = (
                   <div>
                     <Label htmlFor="subject" className="text-sm font-medium">
                       Subject
@@ -1067,8 +1077,9 @@ export function BidSubmissionModal({
                       />
                     )}
                   </div>
+                  );
 
-                  {/* Message Body */}
+                  const messageBodySection = (
                   <div>
                     <div className="flex items-center justify-between">
                       <Label htmlFor="message" className="text-sm font-medium">
@@ -1164,8 +1175,10 @@ export function BidSubmissionModal({
                       />
                     )}
                   </div>
+                  );
 
-                  {/* Documents & Requirements — combined section */}
+                  const documentsSection = (
+                  /* Documents & Requirements — combined section */
                   <div className="rounded-[8px] border border-border">
                   {isLoading ? (
                     <div className="p-4 space-y-3">
@@ -1842,8 +1855,10 @@ export function BidSubmissionModal({
                   </>
                   )}
                   </div>
+                  );
 
-                  {/* Trade Breakdown */}
+                  const tradeBreakdownSection = (
+                  <>
                   {isLoading ? (
                     <div>
                       <Label className="text-sm font-medium">Trade Breakdown</Label>
@@ -1879,10 +1894,12 @@ export function BidSubmissionModal({
                       </div>
                     </div>
                   )}
+                  </>
+                  );
 
+                  const separatorAndShareSection = (
+                  <>
                   <Separator />
-
-                  {/* Share toggle */}
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-foreground">
@@ -1897,7 +1914,90 @@ export function BidSubmissionModal({
                       onCheckedChange={setShareWithGCs}
                     />
                   </div>
-                </div>
+                  </>
+                  );
+
+                  /* Combined Bid Amount + Trade Breakdown accordion for split view */
+                  const bidAmountWithTradeBreakdown = (
+                  <div>
+                    <Label htmlFor="bidAmount" className="text-sm font-medium">
+                      Bid Amount
+                    </Label>
+                    {isLoading ? (
+                      <Skeleton className="mt-1.5 h-11 w-full" />
+                    ) : (
+                      <>
+                      <Input
+                        id="bidAmount"
+                        value={bidAmount}
+                        onChange={(e) => setBidAmount(e.target.value)}
+                        placeholder="$0.00"
+                        className="mt-1.5 text-lg font-semibold"
+                      />
+                      {analysisResult && analysisResult.extractedData.tradeBreakdown.length > 0 && (
+                        <div className="mt-2 rounded-[8px] border border-border">
+                          <button
+                            onClick={() => setTradeBreakdownExpanded(!tradeBreakdownExpanded)}
+                            className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
+                          >
+                            <span>Trade Breakdown ({analysisResult.extractedData.tradeBreakdown.length} items)</span>
+                            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${tradeBreakdownExpanded ? "rotate-180" : ""}`} />
+                          </button>
+                          {tradeBreakdownExpanded && (
+                            <div className="border-t border-border">
+                              {analysisResult.extractedData.tradeBreakdown.map(
+                                (item, i) => (
+                                  <div
+                                    key={i}
+                                    className={`flex justify-between p-3 text-sm ${
+                                      i > 0 ? "border-t border-border" : ""
+                                    }`}
+                                  >
+                                    <span className="text-foreground">{item.trade}</span>
+                                    <span className="font-medium text-foreground">{item.amount}</span>
+                                  </div>
+                                )
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      </>
+                    )}
+                  </div>
+                  );
+
+                  /* ── Conditional rendering: split view vs single column ── */
+
+                  if (isSplitView) {
+                    return (
+                      <div className="grid grid-cols-2 gap-6">
+                        <div className="space-y-5">
+                          {toFieldSection}
+                          {bidAmountWithTradeBreakdown}
+                          {subjectSection}
+                          {messageBodySection}
+                          {separatorAndShareSection}
+                        </div>
+                        <div className="space-y-5">
+                          {documentsSection}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-5">
+                      {toFieldSection}
+                      {bidAmountSection}
+                      {subjectSection}
+                      {messageBodySection}
+                      {documentsSection}
+                      {tradeBreakdownSection}
+                      {separatorAndShareSection}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Review footer — portaled to shell footer in page mode, sticky inline in modal mode */}
@@ -1941,7 +2041,7 @@ export function BidSubmissionModal({
                     <div className="flex items-center gap-3">
                       <Button
                         variant="outline"
-                        onClick={() => { setStep("upload"); setBidScore(null); setScoreBreakdownOpen(false); setIsImprovingBid(false); setFollowUpInput(""); setIsFollowingUp(false); setFollowUpResponse(null); setIsReadinessChecking(false); setReadinessCheck(null); setReadinessExpanded(null); setReadinessOverrides(new Set()); setProposalSectionOpen(true); }}
+                        onClick={() => { setStep("upload"); setBidScore(null); setScoreBreakdownOpen(false); setIsImprovingBid(false); setFollowUpInput(""); setIsFollowingUp(false); setFollowUpResponse(null); setIsReadinessChecking(false); setReadinessCheck(null); setReadinessExpanded(null); setReadinessOverrides(new Set()); setProposalSectionOpen(true); setTradeBreakdownExpanded(true); }}
                       >
                         Back
                       </Button>
@@ -1986,7 +2086,7 @@ export function BidSubmissionModal({
   if (mode === "page") {
     return (
       <div className="h-full overflow-y-auto">
-        <div className="max-w-[900px] mx-auto p-6">
+        <div className={`${getFlag("split-view") ? "max-w-[1400px]" : "max-w-[900px]"} mx-auto p-6`}>
           <div className="bg-card border border-border rounded-lg">
             {content}
           </div>
