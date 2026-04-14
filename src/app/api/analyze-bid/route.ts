@@ -65,8 +65,8 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
-    const projectId = (formData.get("projectId") as string) || "";
-    const activeInstructions = specialInstructions;
+    const projectId = (formData.get("projectId") as string) || "project1";
+    const activeInstructions = projectId === "project2" ? specialInstructions2 : specialInstructions;
     // Start context fetch in parallel with file processing — await later
     const contextPromise = fetchProjectContext(projectId);
 
@@ -149,9 +149,9 @@ Return JSON:
   "confidence": 0.8
 }`;
       const fastResp = await openai.chat.completions.create({
-        model: "gpt-5.4",
+        model: "gpt-4o",
         temperature: 0.1,
-        max_completion_tokens: 512,
+        max_tokens: 512,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: fastSystem },
@@ -229,9 +229,9 @@ ${getInstructionsPromptBlock(activeInstructions)}
     ];
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5.4",
+      model: "gpt-4o",
       temperature: 0.1,
-      max_completion_tokens: 4096,
+      max_tokens: 4096,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },

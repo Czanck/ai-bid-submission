@@ -94,9 +94,9 @@ Analyze these construction project documents and extract:
 }`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5.4",
+      model: "gpt-4o",
       temperature: 0.1,
-      max_completion_tokens: 4096,
+      max_tokens: 4096,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },

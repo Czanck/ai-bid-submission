@@ -127,9 +127,9 @@ Answer this question directly and specifically about their bid. Be concise — 1
       ];
 
       const followUpResponse = await openai.chat.completions.create({
-        model: "gpt-5.4",
+        model: "gpt-4o",
         temperature: 0.4,
-        max_completion_tokens: 512,
+        max_tokens: 512,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: followUpSystem },
@@ -187,19 +187,18 @@ For each dimension, provide:
 
 IMPORTANT rules for findings:
 - Only flag things that are genuinely observable in the documents. Do not invent issues.
-- Never repeat the same observation across multiple findings. If the doc is unreadable, say it ONCE per dimension, not multiple times.
-- If a dimension looks solid, say so with a single "info" finding. Do not manufacture warnings.
+- If a dimension looks solid, say so — do not manufacture warnings.
 - Never suggest quantity corrections, takeoff changes, or specific pricing adjustments.
-- If you lack information to evaluate a dimension, score it 50 and explain clearly in one sentence.
-- Be honest about what you can and cannot see. Consolidate — never pad.
+- If you lack information to evaluate a dimension, give it a middling score and explain why in the explanation.
+- Be honest about what you can and cannot see.
 
 Also provide:
 - An overall score (weighted average, Coverage 35%, Scope Clarity 25%, Consistency 25%, Submission Clarity 15%)
 - A status: "ready" (score >= 80), "needs-review" (score 50–79), "high-risk" (score < 50)
-- A confidence level: "high" (multiple substantive documents with readable proposal), "medium" (partial documents or proposal is partially readable), "low" (proposal is unreadable or minimal content)
-- If confidence is not "high", include a confidenceNote: one clear sentence explaining the limitation and what the user should do to get a full evaluation
-- A summary: if confidence is low due to unreadability, describe the limitation (e.g. "Scanned PDF — re-upload as text-based PDF for full evaluation"). Only describe gaps if you actually found them in readable content.
-- 3–5 suggested follow-up prompt chips. If the proposal is unreadable, the first chip should address that. Remaining chips should be specific to the project type and requirements visible in the context.
+- A confidence level: "high" (multiple substantive documents available), "medium" (partial documents), "low" (minimal content to work with)
+- If confidence is not "high", include a confidenceNote explaining why (1 sentence)
+- A summary line like "2 likely gaps, 1 clarity issue" — short, scannable, factual
+- 3–5 suggested follow-up prompt chips (short questions the user could ask AI next, relevant to what you found)
 
 Return JSON matching this exact schema:
 {
@@ -227,9 +226,9 @@ Return JSON matching this exact schema:
     ];
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5.4",
+      model: "gpt-4o",
       temperature: 0.2,
-      max_completion_tokens: 2048,
+      max_tokens: 2048,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },

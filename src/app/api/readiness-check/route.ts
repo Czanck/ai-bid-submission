@@ -176,9 +176,9 @@ Return JSON matching this exact schema:
     ];
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5.4",
+      model: "gpt-4o",
       temperature: 0.2,
-      max_completion_tokens: 2048,
+      max_tokens: 2048,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },

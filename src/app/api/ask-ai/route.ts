@@ -47,10 +47,10 @@ Guidelines:
     ];
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-5.4",
+      model: "gpt-4o",
       messages,
       temperature: 0.3,
-      max_completion_tokens: 1024,
+      max_tokens: 1024,
     });
 
     const reply = completion.choices[0]?.message?.content ?? "Sorry, I couldn't generate a response.";
