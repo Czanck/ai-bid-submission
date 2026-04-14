@@ -146,6 +146,8 @@ Answer this question directly and specifically about their bid. Be concise — 1
     }
 
     // --- Bid Readiness Score mode ---
+    const isUnreadable = documentText.includes("[Scanned PDF - no extractable text]") && !imageContents.length;
+
     const systemPrompt = `You are a seasoned electrical subcontractor with 20+ years of experience reviewing bid submissions before they go out the door. You are direct, careful, and construction-aware. You never overstate confidence. You never claim to do takeoff or verify quantities. You focus on what a sub can actually check before hitting send: did they cover the scope, is the proposal clear, does anything contradict, and will the GC understand what they're getting.
 
 Return only valid JSON matching the exact schema requested. No other text.`;
@@ -156,7 +158,14 @@ Bid document:
 ${documentText || "[No text content — analyze the attached images]"}
 
 You are doing a final QA check on this bid package before the subcontractor submits. Score the bid's READINESS (not quality, not price, not likelihood to win).
-
+${isUnreadable ? `
+CRITICAL: The bid document is a scanned image — no text was extracted. This means you CANNOT evaluate the proposal content. Follow these rules strictly:
+- Score each dimension 50 (neutral — cannot evaluate) UNLESS you have actual evidence from the project context or other readable documents to score higher or lower.
+- Each dimension gets AT MOST ONE finding about unreadability. Do not repeat the same point multiple times across findings.
+- Focus findings on what you CAN evaluate from the project context (specs, GC notes, requirements) — not on the absence of proposal text.
+- The summary must say something like "Scanned PDF — upload text-based version to evaluate" NOT "X likely gaps". Unreadability is not a gap.
+- Prompt chips must focus on resolving the readability problem first, then on substantive questions about the project.
+` : ""}
 Evaluate these 4 dimensions, each scored 0–100:
 
 1. **Coverage** — Are the key requirements from the project likely addressed? Are addenda acknowledged? Are there obvious scope categories that seem missing given the project type and trades?
@@ -178,18 +187,19 @@ For each dimension, provide:
 
 IMPORTANT rules for findings:
 - Only flag things that are genuinely observable in the documents. Do not invent issues.
-- If a dimension looks solid, say so — do not manufacture warnings.
+- Never repeat the same observation across multiple findings. If the doc is unreadable, say it ONCE per dimension, not multiple times.
+- If a dimension looks solid, say so with a single "info" finding. Do not manufacture warnings.
 - Never suggest quantity corrections, takeoff changes, or specific pricing adjustments.
-- If you lack information to evaluate a dimension, give it a middling score and explain why in the explanation.
-- Be honest about what you can and cannot see.
+- If you lack information to evaluate a dimension, score it 50 and explain clearly in one sentence.
+- Be honest about what you can and cannot see. Consolidate — never pad.
 
 Also provide:
 - An overall score (weighted average, Coverage 35%, Scope Clarity 25%, Consistency 25%, Submission Clarity 15%)
 - A status: "ready" (score >= 80), "needs-review" (score 50–79), "high-risk" (score < 50)
-- A confidence level: "high" (multiple substantive documents available), "medium" (partial documents), "low" (minimal content to work with)
-- If confidence is not "high", include a confidenceNote explaining why (1 sentence)
-- A summary line like "2 likely gaps, 1 clarity issue" — short, scannable, factual
-- 3–5 suggested follow-up prompt chips (short questions the user could ask AI next, relevant to what you found)
+- A confidence level: "high" (multiple substantive documents with readable proposal), "medium" (partial documents or proposal is partially readable), "low" (proposal is unreadable or minimal content)
+- If confidence is not "high", include a confidenceNote: one clear sentence explaining the limitation and what the user should do to get a full evaluation
+- A summary: if confidence is low due to unreadability, describe the limitation (e.g. "Scanned PDF — re-upload as text-based PDF for full evaluation"). Only describe gaps if you actually found them in readable content.
+- 3–5 suggested follow-up prompt chips. If the proposal is unreadable, the first chip should address that. Remaining chips should be specific to the project type and requirements visible in the context.
 
 Return JSON matching this exact schema:
 {

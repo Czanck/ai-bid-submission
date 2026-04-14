@@ -693,7 +693,7 @@ export default function Home() {
             </div>
           </div>
         </div>
-      ) : (
+      ) : activeTab === "files" ? (
         <div className="p-6 bg-[var(--bg-surface,#F5F7F9)]">
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             {/* Header */}
@@ -777,7 +777,7 @@ export default function Home() {
             )}
           </div>
         </div>
-      )}
+      ) : null}
 
       <BidSubmissionModal
         open={modalOpen}

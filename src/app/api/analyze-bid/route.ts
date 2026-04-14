@@ -134,6 +134,49 @@ export async function POST(request: Request) {
       documentText = documentText.substring(0, maxTextLength) + "\n[...truncated]";
     }
 
+    const fast = (formData.get("fast") as string) === "true";
+
+    if (fast) {
+      // Skip doc-intel — just extract bid amount and draft message from the document
+      const fastSystem = `You are a construction bid extractor. Extract data from bid documents. Return only valid JSON.`;
+      const fastUser = `Document:
+${documentText || "[No text — analyze attached images]"}
+
+Return JSON:
+{
+  "extractedData": { "companyName": "string", "bidAmount": "string (format: '$1,234,567' or '' if not found)" },
+  "messageTemplate": "2-3 sentence professional email body for submitting this bid. Mention company name, bid amount, and trade scope.",
+  "confidence": 0.8
+}`;
+      const fastResp = await openai.chat.completions.create({
+        model: "gpt-5.4",
+        temperature: 0.1,
+        max_completion_tokens: 512,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: fastSystem },
+          { role: "user", content: [{ type: "text", text: fastUser }, ...imageContents] as OpenAI.Chat.Completions.ChatCompletionContentPart[] },
+        ],
+      });
+      const fastText = fastResp.choices[0]?.message?.content;
+      if (!fastText) return NextResponse.json({ error: "No response from AI" }, { status: 502 });
+      const fp = JSON.parse(fastText) as { extractedData?: { companyName?: string; bidAmount?: string }; messageTemplate?: string; confidence?: number };
+      return NextResponse.json({
+        extractedData: {
+          companyName: fp.extractedData?.companyName || "",
+          bidAmount: fp.extractedData?.bidAmount || "",
+          tradeBreakdown: [],
+          certifications: { mbe: false, wbe: false, other: [] },
+          bondInfo: { hasBidBond: false, bondingCapacity: "", bondCompany: "" },
+          insuranceInfo: { hasGeneralLiability: false, coverageAmount: "", certificateProvided: false },
+          contactInfo: { name: "", email: "", phone: "" },
+        },
+        checklist: [],
+        messageTemplate: fp.messageTemplate || "",
+        confidence: fp.confidence ?? 0.5,
+      } as AnalyzeBidResponse);
+    }
+
     // Await context now — file processing has been running in parallel
     const projectContextText = await contextPromise;
 
