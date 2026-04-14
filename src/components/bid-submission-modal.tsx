@@ -1972,14 +1972,14 @@ export function BidSubmissionModal({
                   if (isSplitView) {
                     return (
                       <div className="grid grid-cols-2 gap-6">
-                        <div className="space-y-5">
+                        <div className="bg-card border border-border rounded-lg p-5 space-y-5">
                           {toFieldSection}
-                          {bidAmountWithTradeBreakdown}
                           {subjectSection}
                           {messageBodySection}
                           {separatorAndShareSection}
                         </div>
-                        <div className="space-y-5">
+                        <div className="bg-card border border-border rounded-lg p-5 space-y-5">
+                          {bidAmountWithTradeBreakdown}
                           {documentsSection}
                         </div>
                       </div>
@@ -2087,9 +2087,13 @@ export function BidSubmissionModal({
     return (
       <div className="h-full overflow-y-auto">
         <div className={`${getFlag("split-view") ? "max-w-[1400px]" : "max-w-[900px]"} mx-auto p-6`}>
-          <div className="bg-card border border-border rounded-lg">
-            {content}
-          </div>
+          {getFlag("split-view") ? (
+            content
+          ) : (
+            <div className="bg-card border border-border rounded-lg">
+              {content}
+            </div>
+          )}
         </div>
       </div>
     );
