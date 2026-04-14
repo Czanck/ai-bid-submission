@@ -5,7 +5,7 @@ import {
   specialInstructions,
   specialInstructions2,
 } from "@/lib/special-instructions";
-import { project1Context, project2Context } from "@/data/project-context";
+import { fetchProjectContext } from "@/lib/doc-intel";
 import type { AnalyzeBidResponse, RequirementCheck } from "@/lib/types";
 
 // Increase body size limit for file uploads (Next.js App Router)
@@ -65,10 +65,10 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
-    const projectId = (formData.get("projectId") as string) || "project1";
-    const customContext = formData.get("projectContext") as string | null;
-    const activeInstructions = projectId === "project2" ? specialInstructions2 : specialInstructions;
-    const projectContextText = customContext || (projectId === "project2" ? project2Context : project1Context);
+    const projectId = (formData.get("projectId") as string) || "";
+    const activeInstructions = specialInstructions;
+    // Start context fetch in parallel with file processing — await later
+    const contextPromise = fetchProjectContext(projectId);
 
     if (!files || files.length === 0) {
       return NextResponse.json(
@@ -134,6 +134,9 @@ export async function POST(request: Request) {
       documentText = documentText.substring(0, maxTextLength) + "\n[...truncated]";
     }
 
+    // Await context now — file processing has been running in parallel
+    const projectContextText = await contextPromise;
+
     const systemPrompt = `You are a construction bid document analyzer. You extract structured data from bid submissions and evaluate compliance against real project requirements and special instructions.
 
 You have access to the actual project scope and specifications. Compare the submitted bid against these project details to identify coverage gaps, mismatches, or missing items.
@@ -185,7 +188,7 @@ ${getInstructionsPromptBlock(activeInstructions)}
     const response = await openai.chat.completions.create({
       model: "gpt-5.4",
       temperature: 0.1,
-      max_tokens: 4096,
+      max_completion_tokens: 4096,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },

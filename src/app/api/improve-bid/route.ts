@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { project1Context, project2Context } from "@/data/project-context";
+import { fetchProjectContext } from "@/lib/doc-intel";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -37,11 +37,6 @@ function buildImageContent(
   };
 }
 
-const projectContextMap: Record<string, string> = {
-  project1: project1Context,
-  project2: project2Context,
-};
-
 export async function POST(request: Request) {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -55,9 +50,9 @@ export async function POST(request: Request) {
     const openai = new OpenAI({ apiKey });
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
-    const projectId = (formData.get("projectId") as string) || "project1";
-    const customContext = formData.get("projectContext") as string | null;
-    const context = customContext || (projectContextMap[projectId] ?? projectContextMap.project1);
+    const projectId = (formData.get("projectId") as string) || "";
+    // Start context fetch in parallel with file processing — await later
+    const contextPromise = fetchProjectContext(projectId);
     const followUp = (formData.get("followUp") as string) || "";
     const previousContext = (formData.get("context") as string) || "";
 
@@ -107,6 +102,9 @@ export async function POST(request: Request) {
       documentText = documentText.substring(0, maxTextLength) + "\n[...truncated]";
     }
 
+    // Await context now — file processing has been running in parallel
+    const context = await contextPromise;
+
     // --- Follow-up mode: simple Q&A ---
     if (followUp) {
       const followUpSystem = `You are a seasoned electrical subcontractor with 20+ years of experience reviewing and submitting bids. You speak plainly, directly, and from hard-won experience. Return only valid JSON, no other text.`;
@@ -131,7 +129,7 @@ Answer this question directly and specifically about their bid. Be concise — 1
       const followUpResponse = await openai.chat.completions.create({
         model: "gpt-5.4",
         temperature: 0.4,
-        max_tokens: 512,
+        max_completion_tokens: 512,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: followUpSystem },
@@ -221,7 +219,7 @@ Return JSON matching this exact schema:
     const response = await openai.chat.completions.create({
       model: "gpt-5.4",
       temperature: 0.2,
-      max_tokens: 2048,
+      max_completion_tokens: 2048,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },

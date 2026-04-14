@@ -2,18 +2,9 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, MapPin, Plus, Loader2 } from "lucide-react";
-import type { StoredProject } from "@/lib/types";
+import { Calendar, MapPin, Loader2 } from "lucide-react";
 import type { ProjectDisplay } from "@/lib/planhub-api";
 
-const columnBadgeVariant: Record<string, "info" | "warning" | "success" | "neutral"> = {
-  saved: "neutral",
-  estimating: "warning",
-  bidding: "info",
-  submitted: "info",
-  won: "success",
-  lost: "neutral",
-};
 
 const columns = [
   { id: "saved", title: "Saved" },
@@ -26,18 +17,11 @@ const columns = [
 
 interface BidBoardProps {
   onProjectClick: (projectId: string) => void;
-  onImportClick: () => void;
-  storedProjects: StoredProject[];
   /** Live PlanHub projects — null means loading, ProjectDisplay means loaded */
   planhubProjects: { id: string; display: ProjectDisplay | null }[];
 }
 
-export function BidBoard({
-  onProjectClick,
-  onImportClick,
-  storedProjects,
-  planhubProjects,
-}: BidBoardProps) {
+export function BidBoard({ onProjectClick, planhubProjects }: BidBoardProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -48,10 +32,6 @@ export function BidBoard({
             Track and manage your active bids
           </p>
         </div>
-        <Button onClick={onImportClick} size="sm">
-          <Plus className="h-4 w-4 mr-1.5" />
-          Import Project
-        </Button>
       </div>
 
       {/* Kanban columns */}
@@ -59,8 +39,7 @@ export function BidBoard({
         <div className="flex gap-4 h-full min-w-max">
           {columns.map((col) => {
             const planhubCards = col.id === "saved" ? planhubProjects : [];
-            const dynamicCards = storedProjects.filter((p) => p.boardColumn === col.id);
-            const totalCount = planhubCards.length + dynamicCards.length;
+            const totalCount = planhubCards.length;
 
             return (
               <div
@@ -129,49 +108,6 @@ export function BidBoard({
                       </div>
                     )
                   )}
-
-                  {/* IndexedDB imported project cards */}
-                  {dynamicCards.map((p) => (
-                    <div
-                      key={p.id}
-                      onClick={() => onProjectClick(p.id)}
-                      className="bg-card border border-border rounded-lg p-4 cursor-pointer hover:shadow-md hover:border-primary/30 transition-all group"
-                    >
-                      <Badge
-                        variant={columnBadgeVariant[p.boardColumn] || "neutral"}
-                        className="mb-2.5"
-                      >
-                        {col.title}
-                      </Badge>
-                      <h4 className="text-sm font-semibold text-foreground leading-snug group-hover:text-primary transition-colors">
-                        {p.name}
-                      </h4>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Bid Value: {p.projectValue}
-                      </p>
-                      <div className="flex items-center gap-1.5 mt-2.5 text-xs text-destructive font-medium">
-                        <Calendar className="h-3 w-3" />
-                        <span>DUE {p.dueDate}</span>
-                      </div>
-                      {p.location && (
-                        <div className="flex items-center gap-1.5 mt-1.5 text-xs text-muted-foreground">
-                          <MapPin className="h-3 w-3 shrink-0" />
-                          <span className="truncate">{p.location}</span>
-                        </div>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full mt-3"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onProjectClick(p.id);
-                        }}
-                      >
-                        View Project
-                      </Button>
-                    </div>
-                  ))}
 
                   {totalCount === 0 && (
                     <div className="flex items-center justify-center h-full text-xs text-muted-foreground">

@@ -8,11 +8,8 @@ import { BidSubmissionModal } from "@/components/bid-submission-modal";
 import { BidBoard } from "@/components/bid-board";
 import { AskAiPanel } from "@/components/ask-ai-panel";
 import { FileViewerTab } from "@/components/file-viewer-tab";
-import { ImportProjectModal } from "@/components/import-project-modal";
 import { PlanHubShell } from "@/components/planhub-shell";
 import { PLANHUB_PROJECT_IDS, PLANHUB_ID_SET } from "@/data/dummy-project";
-import { getAllProjects } from "@/lib/project-store";
-import type { StoredProject } from "@/lib/types";
 import { getFlag } from "@/lib/feature-flags";
 import { getSession, clearSession, getInitials, getDisplayName } from "@/lib/auth";
 import type { PlanhubSession } from "@/lib/auth";
@@ -41,7 +38,15 @@ import {
   Package,
   Truck,
   Clock,
+  ExternalLink,
+  File,
 } from "lucide-react";
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function SectionCard({
   icon,
@@ -106,15 +111,6 @@ export default function Home() {
   const [activeProject, setActiveProject] = useState<string>(PLANHUB_PROJECT_IDS[0]);
   const [activeView, setActiveView] = useState<"project" | "bidboard">("bidboard");
 
-  // Dynamic (imported) projects
-  const [storedProjects, setStoredProjects] = useState<StoredProject[]>([]);
-  const [importModalOpen, setImportModalOpen] = useState(false);
-  const [dynamicProject, setDynamicProject] = useState<StoredProject | null>(null);
-
-  // Load stored projects from IndexedDB on mount
-  useEffect(() => {
-    getAllProjects().then(setStoredProjects).catch(console.error);
-  }, []);
 
   async function handleLogout() {
     const token = session?.auth_token;
@@ -136,10 +132,6 @@ export default function Home() {
       }
     : undefined;
 
-  const isDynamic =
-    dynamicProject !== null &&
-    activeView === "project" &&
-    !PLANHUB_ID_SET.has(activeProject);
 
   // Live PlanHub project data (keyed by project ID)
   const [liveProjects, setLiveProjects] = useState<
@@ -187,20 +179,45 @@ export default function Home() {
     trades: [], totalTrades: 0,
   };
 
-  const displayProject = isDynamic
-    ? dynamicProject!
-    : (liveData?.project ?? LOADING_PROJECT);
-  const displayGcList = isDynamic ? [] : (liveData?.gcList ?? []);
+  const displayProject = liveData?.project ?? LOADING_PROJECT;
+  const displayGcList = liveData?.gcList ?? [];
+
+  // Documents for the Files tab (keyed by project ID)
+  interface DocItem {
+    filename: string;
+    size: number;
+    uploaded_at: string;
+    file_type: string;
+    path: string;
+  }
+  const [projectDocs, setProjectDocs] = useState<Record<string, DocItem[] | null>>({});
+  const [docsLoading, setDocsLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeTab !== "files" || !activeProject) return;
+    if (projectDocs[activeProject] !== undefined) return; // already fetched
+    setDocsLoading(true);
+    fetch(`/api/doc-intel/documents?projectId=${encodeURIComponent(activeProject)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setProjectDocs((prev) => ({
+          ...prev,
+          [activeProject]: Array.isArray(data.documents) ? data.documents : [],
+        }));
+      })
+      .catch(() => {
+        setProjectDocs((prev) => ({ ...prev, [activeProject]: null }));
+      })
+      .finally(() => setDocsLoading(false));
+  }, [activeTab, activeProject]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleNavClick = (navId: string) => {
     if (navId === "bidboard") {
       setActiveView("bidboard");
-      setDynamicProject(null);
       setAskAiOpen(false);
     } else if (PLANHUB_ID_SET.has(navId)) {
       setActiveView("project");
       setActiveProject(navId);
-      setDynamicProject(null);
       setActiveTab("overview");
       setShowAllTrades(false);
       setGcExpanded(null);
@@ -212,27 +229,7 @@ export default function Home() {
   const handleProjectClick = (projectId: string) => {
     if (PLANHUB_ID_SET.has(projectId)) {
       handleNavClick(projectId);
-    } else {
-      // Imported (IndexedDB) project
-      const found = storedProjects.find((p) => p.id === projectId);
-      if (found) {
-        setDynamicProject(found);
-        setActiveView("project");
-        setActiveProject(projectId);
-        setActiveTab("overview");
-        setShowAllTrades(false);
-        setGcExpanded(null);
-        setModalOpen(false);
-      }
     }
-  };
-
-  const handleProjectImported = (project: StoredProject) => {
-    setStoredProjects((prev) => [...prev, project]);
-    setDynamicProject(project);
-    setActiveView("project");
-    setActiveProject(project.id);
-    setActiveTab("overview");
   };
 
   const handleOpenSource = (trade: string, detail: string) => {
@@ -268,18 +265,16 @@ export default function Home() {
       <div ref={bidFooterRef} className="shrink-0" />
     ) : (
     <div className="border-t border-border bg-card px-6 py-3 flex items-center justify-end gap-3 shrink-0">
-      {!isDynamic && (
-        <>
-          <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive-surface">
-            <X className="h-4 w-4 mr-1.5" />
-            Decline
-          </Button>
-          <Button variant="outline">
-            <Check className="h-4 w-4 mr-1.5" />
-            Intend to Bid
-          </Button>
-        </>
-      )}
+      <>
+        <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive-surface">
+          <X className="h-4 w-4 mr-1.5" />
+          Decline
+        </Button>
+        <Button variant="outline">
+          <Check className="h-4 w-4 mr-1.5" />
+          Intend to Bid
+        </Button>
+      </>
       <Button onClick={() => {
         if (getFlag("tabular-submission")) {
           setActiveTab("submit-bid");
@@ -302,12 +297,12 @@ export default function Home() {
         <AskAiPanel
           open={askAiOpen}
           onClose={() => setAskAiOpen(false)}
-          projectId={isDynamic ? dynamicProject.id : activeProject}
-          projectContext={isDynamic ? dynamicProject.projectContext : undefined}
+          projectId={activeProject}
+          projectContext={undefined}
         />
       ) : undefined}
       onNavClick={handleNavClick}
-      activeProject={activeView === "project" && !isDynamic ? activeProject : undefined}
+      activeProject={activeView === "project" ? activeProject : undefined}
       activeView={activeView}
       user={user}
       onLogout={handleLogout}
@@ -317,22 +312,13 @@ export default function Home() {
       }))}
     >
       {activeView === "bidboard" ? (
-        <>
-          <BidBoard
-            onProjectClick={handleProjectClick}
-            onImportClick={() => setImportModalOpen(true)}
-            storedProjects={storedProjects}
-            planhubProjects={PLANHUB_PROJECT_IDS.map((id) => ({
-              id,
-              display: liveProjects[id]?.project ?? null,
-            }))}
-          />
-          <ImportProjectModal
-            open={importModalOpen}
-            onOpenChange={setImportModalOpen}
-            onProjectImported={handleProjectImported}
-          />
-        </>
+        <BidBoard
+          onProjectClick={handleProjectClick}
+          planhubProjects={PLANHUB_PROJECT_IDS.map((id) => ({
+            id,
+            display: liveProjects[id]?.project ?? null,
+          }))}
+        />
       ) : (
       <>
       {/* Project Header */}
@@ -340,7 +326,7 @@ export default function Home() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <h1 className="text-base font-semibold text-foreground truncate">
-              {isDynamic ? displayProject.name : `${activeProject} - ${displayProject.name}`}
+              {`${activeProject} - ${displayProject.name}`}
             </h1>
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground shrink-0">
               <Calendar className="h-3.5 w-3.5" />
@@ -449,11 +435,11 @@ export default function Home() {
           <BidSubmissionModal
             open={true}
             onOpenChange={() => setActiveTab("overview")}
-            projectName={isDynamic ? displayProject.name : `${activeProject} - ${displayProject.name}`}
+            projectName={`${activeProject} - ${displayProject.name}`}
             gcName={displayGcList[0]?.name ?? "General Contractor"}
             gcEmail={displayGcList[0]?.email || "bids@contractor.com"}
-            projectId={isDynamic ? dynamicProject.id : activeProject}
-            projectContext={isDynamic ? dynamicProject.projectContext : undefined}
+            projectId={activeProject}
+            projectContext={undefined}
             mode="page"
             footerPortalRef={bidFooterRef}
             onOpenSource={handleOpenSource}
@@ -472,7 +458,7 @@ export default function Home() {
       ))}
       {activeTab === "track-bid" ? (
         <div className="p-6 bg-[var(--bg-surface,#F5F7F9)]">
-          <BidTracker projectName={isDynamic ? displayProject.name : `${activeProject} - ${displayProject.name}`} gcName={displayGcList[0]?.name ?? "General Contractor"} />
+          <BidTracker projectName={`${activeProject} - ${displayProject.name}`} gcName={displayGcList[0]?.name ?? "General Contractor"} />
         </div>
       ) : activeTab === "overview" ? (
         <div className="p-6 bg-[var(--bg-surface,#F5F7F9)]">
@@ -548,9 +534,9 @@ export default function Home() {
                 title="Trades Needed"
               >
                 <div className="flex flex-wrap gap-2">
-                  {displayProject.trades.map((trade) => (
+                  {displayProject.trades.map((trade, i) => (
                     <span
-                      key={trade}
+                      key={`${trade}-${i}`}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-success-surface text-success-foreground border border-success-border"
                     >
                       <Check className="h-3 w-3" />
@@ -558,7 +544,7 @@ export default function Home() {
                     </span>
                   ))}
                 </div>
-                {!isDynamic && !showAllTrades && displayProject.totalTrades > displayProject.trades.length && (
+                {!showAllTrades && displayProject.totalTrades > displayProject.trades.length && (
                   <button
                     onClick={() => setShowAllTrades(true)}
                     className="mt-3 text-sm font-medium text-primary hover:underline"
@@ -621,9 +607,8 @@ export default function Home() {
                 )}
               </SectionCard>
 
-              {/* General Contractors — only for hardcoded projects */}
-              {!isDynamic ? (
-                <SectionCard
+              {/* General Contractors */}
+              <SectionCard
                   icon={
                     <Building2 className="h-4 w-4 text-muted-foreground" />
                   }
@@ -705,31 +690,91 @@ export default function Home() {
                     ))}
                   </div>
                 </SectionCard>
-              ) : (
-                <SectionCard
-                  icon={
-                    <Building2 className="h-4 w-4 text-muted-foreground" />
-                  }
-                  title="General Contractors"
-                >
-                  <div className="text-sm text-muted-foreground py-4 text-center">
-                    No GC information available for imported projects yet.
-                  </div>
-                </SectionCard>
-              )}
             </div>
           </div>
         </div>
       ) : (
         <div className="p-6 bg-[var(--bg-surface,#F5F7F9)]">
-          <div className="bg-card border border-border rounded-lg p-12 text-center">
-            <FileText className="h-12 w-12 text-muted-foreground mx-auto" />
-            <h2 className="mt-4 text-lg font-semibold text-foreground">
-              No files uploaded yet
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Project files will appear here once uploaded.
-            </p>
+          <div className="bg-card border border-border rounded-lg overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                <h2 className="text-sm font-semibold text-foreground">Project Files</h2>
+                {!docsLoading && projectDocs[activeProject] != null && (
+                  <span className="text-xs text-muted-foreground">
+                    ({projectDocs[activeProject]!.length})
+                  </span>
+                )}
+              </div>
+              <a
+                href={`https://doc-intel.dev.planhub.com/projects/${activeProject}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 h-7 rounded-md text-xs font-medium bg-[#00B894] text-white hover:bg-[#009F7F] transition-colors"
+              >
+                Open in Doc Intel
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+
+            {/* Content */}
+            {docsLoading ? (
+              <div className="flex items-center gap-2 px-5 py-8 text-sm text-muted-foreground">
+                <div className="h-3.5 w-3.5 rounded-full border-2 border-[#00B894] border-t-transparent animate-spin" />
+                Loading files…
+              </div>
+            ) : projectDocs[activeProject] == null ? (
+              <div className="px-5 py-8 text-sm text-muted-foreground text-center">
+                Failed to load files. Please try again.
+              </div>
+            ) : projectDocs[activeProject]!.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <File className="h-10 w-10 text-muted-foreground mb-3" />
+                <p className="text-sm font-medium text-foreground">No files yet</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Upload files in Doc Intel to see them here.
+                </p>
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-accent/30">
+                    <th className="text-left px-5 py-2.5 text-xs font-medium text-muted-foreground">Name</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Type</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Size</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Uploaded</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projectDocs[activeProject]!.map((doc, i) => (
+                    <tr key={i} className="border-b border-border last:border-b-0 hover:bg-accent/20 transition-colors">
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <span className="font-medium text-foreground truncate max-w-[280px]" title={doc.filename}>
+                            {doc.filename}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-accent text-muted-foreground uppercase">
+                          {doc.file_type || "—"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {formatBytes(doc.size)}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {new Date(doc.uploaded_at).toLocaleDateString("en-US", {
+                          month: "short", day: "numeric", year: "numeric",
+                        })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
@@ -737,11 +782,11 @@ export default function Home() {
       <BidSubmissionModal
         open={modalOpen}
         onOpenChange={setModalOpen}
-        projectName={isDynamic ? displayProject.name : `${activeProject} - ${displayProject.name}`}
+        projectName={`${activeProject} - ${displayProject.name}`}
         gcName={displayGcList[0]?.name ?? "General Contractor"}
         gcEmail={displayGcList[0]?.email || "bids@contractor.com"}
-        projectId={isDynamic ? dynamicProject.id : activeProject}
-        projectContext={isDynamic ? dynamicProject.projectContext : undefined}
+        projectId={activeProject}
+        projectContext={undefined}
       />
 
       </>

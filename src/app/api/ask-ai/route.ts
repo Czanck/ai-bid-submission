@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { project1Context, project2Context } from "@/data/project-context";
+import { fetchProjectContext } from "@/lib/doc-intel";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -21,12 +21,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
-    // Resolve project context
-    let context = projectContext || "";
-    if (!context) {
-      if (projectId === "project1") context = project1Context;
-      else if (projectId === "project2") context = project2Context;
-    }
+    // Resolve project context: prefer explicitly passed context, then fetch from doc-intel
+    const context = projectContext || (projectId ? await fetchProjectContext(projectId) : "");
 
     const systemPrompt = `You are an expert AI construction bid advisor embedded in a bid management platform (PlanHub). You help subcontractors understand project requirements, improve their bids, identify risks, and answer questions about the project specifications.
 
@@ -54,7 +50,7 @@ Guidelines:
       model: "gpt-5.4",
       messages,
       temperature: 0.3,
-      max_tokens: 1024,
+      max_completion_tokens: 1024,
     });
 
     const reply = completion.choices[0]?.message?.content ?? "Sorry, I couldn't generate a response.";
