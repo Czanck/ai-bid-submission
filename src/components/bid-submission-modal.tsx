@@ -1039,6 +1039,16 @@ export function BidSubmissionModal({
                       />
                     </div>
                   )}
+
+                  {/* Individual send callout */}
+                  <div className="flex items-center gap-2.5 rounded-lg bg-blue-50 border border-blue-100 px-3 py-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 200 200" className="shrink-0 text-blue-600">
+                      <path d="m178.1 66.61h-21.03v-20.56c0-9.11-6.39-15.61-15.02-15.61h-120c-8.86 0-15 6.6-15 15.97v69.92c0 8.86 6.07 16.83 15 16.83h20.26v19.79c0 9.52 5.96 16.61 14.61 16.61h121.1c8.8 0 15.22-7.58 15.22-16.25v-70.58c0-9-6-16.12-15.22-16.12zm-31.12-18.66v18.66h-23.49l23.49-18.66zm-8.74-6.68-30.56 25.34h-50.87l-30.64-25.34h112.1zm-120.6 73.85v-67.87l28.38 24.42c-2.07 3.13-3.64 6.37-3.64 10.49v10.77l-24.74 22.19zm8.11 7.29 16.63-15.46v14.37l-16.63 1.09zm27.34 29.2v-67.78l37.53 31.88-37.53 35.9zm8.02 6.5 37.98-35.75 5.8 5.79c3.76 3.74 8.55 5.04 12.16 5.04 4.73 0 8.77-2.37 12.07-5.56l6.78-4.94 37.15 35.42h-111.9zm121.3-7.45-37.68-35.35 37.68-31.05v66.4zm-59.61-31.88c-3.82 3.41-8.33 3.43-12.49-0.36l-48.33-40.78h111.5l-50.65 41.14z" fill="currentColor"/>
+                    </svg>
+                    <p className="text-xs text-blue-700 leading-snug">
+                      Each GC will receive an individual, personalized email — not a group message.
+                    </p>
+                  </div>
                   </>
                   );
 
