@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
-  const planhubApiUrl = process.env.PLANHUB_API_URL;
-  if (!planhubApiUrl) {
-    return NextResponse.json({});
-  }
+  const planhubApiUrl = process.env.PLANHUB_API_URL ?? "https://api.qa.planhub.com";
 
   try {
     const body = await request.json();

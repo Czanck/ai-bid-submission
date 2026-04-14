@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
-  const planhubApiUrl = process.env.PLANHUB_API_URL;
-  if (!planhubApiUrl) {
-    return NextResponse.json({ error: "PLANHUB_API_URL not configured" }, { status: 500 });
-  }
+  const planhubApiUrl = process.env.PLANHUB_API_URL ?? "https://api.qa.planhub.com";
 
   const authorization = request.headers.get("authorization");
   if (!authorization) {
