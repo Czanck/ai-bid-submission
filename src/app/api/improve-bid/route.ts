@@ -129,7 +129,7 @@ Answer this question directly and specifically about their bid. Be concise — 1
       ];
 
       const followUpResponse = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "gpt-5.4",
         temperature: 0.4,
         max_tokens: 512,
         response_format: { type: "json_object" },
@@ -219,7 +219,7 @@ Return JSON matching this exact schema:
     ];
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5.4",
       temperature: 0.2,
       max_tokens: 2048,
       response_format: { type: "json_object" },

@@ -180,7 +180,7 @@ Return JSON matching this exact schema:
     ];
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5.4",
       temperature: 0.2,
       max_tokens: 2048,
       response_format: { type: "json_object" },

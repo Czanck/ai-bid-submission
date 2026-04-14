@@ -71,6 +71,7 @@ export function PlanHubShell({
   activeView,
   user,
   onLogout,
+  projectNavItems,
 }: {
   children: React.ReactNode;
   footer?: React.ReactNode;
@@ -80,6 +81,7 @@ export function PlanHubShell({
   activeView?: string;
   user?: { name: string; initials: string; company?: string };
   onLogout?: () => void;
+  projectNavItems?: { id: string; label: string }[];
 }) {
   const [flagsOpen, setFlagsOpen] = useState(false);
 
@@ -117,7 +119,7 @@ export function PlanHubShell({
               key={item.label}
               item={{
                 ...item,
-                active: item.navId ? item.navId === activeProject || item.navId === activeView : (item as { active?: boolean }).active,
+                active: (item as { active?: boolean }).active,
               }}
               onClick={onNavClick}
             />
@@ -130,13 +132,43 @@ export function PlanHubShell({
             Workspace
           </span>
         </div>
-        <nav className="px-2 space-y-0.5 flex-1">
-          {navItems.workspace.map((item) => (
+        <nav className="px-2 space-y-0.5 flex-1 overflow-y-auto">
+          {/* Static top items (Network) */}
+          {navItems.workspaceTop.map((item) => (
+            <NavItem
+              key={item.label}
+              item={{ ...item, active: (item as { active?: boolean }).active }}
+              onClick={onNavClick}
+            />
+          ))}
+
+          {/* Dynamic project items */}
+          {projectNavItems?.map((p) => (
+            <a
+              key={p.id}
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                onNavClick?.(p.id);
+              }}
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                p.id === activeProject && activeView === "project"
+                  ? "bg-[#00B894] text-white"
+                  : "text-[var(--sidebar-accent-foreground)] hover:bg-[var(--sidebar-accent)] hover:text-white"
+              }`}
+            >
+              <FolderKanban className="h-[18px] w-[18px] shrink-0" />
+              <span className="truncate">{p.label}</span>
+            </a>
+          ))}
+
+          {/* Static bottom items (Bid Board, Takeoff, Job Board) */}
+          {navItems.workspaceBottom.map((item) => (
             <NavItem
               key={item.label}
               item={{
                 ...item,
-                active: item.navId ? item.navId === activeProject || item.navId === activeView : (item as { active?: boolean }).active,
+                active: item.navId ? item.navId === activeView : (item as { active?: boolean }).active,
               }}
               onClick={onNavClick}
             />

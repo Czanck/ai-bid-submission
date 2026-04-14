@@ -10,12 +10,14 @@ import { AskAiPanel } from "@/components/ask-ai-panel";
 import { FileViewerTab } from "@/components/file-viewer-tab";
 import { ImportProjectModal } from "@/components/import-project-modal";
 import { PlanHubShell } from "@/components/planhub-shell";
-import { dummyProject, project2, gcList, gcList2 } from "@/data/dummy-project";
+import { PLANHUB_PROJECT_IDS, PLANHUB_ID_SET } from "@/data/dummy-project";
 import { getAllProjects } from "@/lib/project-store";
 import type { StoredProject } from "@/lib/types";
 import { getFlag } from "@/lib/feature-flags";
 import { getSession, clearSession, getInitials, getDisplayName } from "@/lib/auth";
 import type { PlanhubSession } from "@/lib/auth";
+import { getLeadDetails, mapLeadToDisplay, mapLeadToGcList } from "@/lib/planhub-api";
+import type { ProjectDisplay, GcDisplay } from "@/lib/planhub-api";
 import {
   Calendar,
   Sparkles,
@@ -101,7 +103,7 @@ export default function Home() {
   const bidFooterRef = useRef<HTMLDivElement>(null);
   const [showAllTrades, setShowAllTrades] = useState(false);
   const [gcExpanded, setGcExpanded] = useState<string | null>(null);
-  const [activeProject, setActiveProject] = useState<"project1" | "project2">("project1");
+  const [activeProject, setActiveProject] = useState<string>(PLANHUB_PROJECT_IDS[0]);
   const [activeView, setActiveView] = useState<"project" | "bidboard">("bidboard");
 
   // Dynamic (imported) projects
@@ -134,21 +136,68 @@ export default function Home() {
       }
     : undefined;
 
-  const isDynamic = dynamicProject !== null && activeView === "project" && activeProject !== "project1" && activeProject !== "project2";
+  const isDynamic =
+    dynamicProject !== null &&
+    activeView === "project" &&
+    !PLANHUB_ID_SET.has(activeProject);
 
-  // For hardcoded projects
-  const currentProject = activeProject === "project1" ? dummyProject : project2;
-  const currentGcList = activeProject === "project1" ? gcList : gcList2;
+  // Live PlanHub project data (keyed by project ID)
+  const [liveProjects, setLiveProjects] = useState<
+    Record<string, { project: ProjectDisplay; gcList: GcDisplay[] } | null>
+  >({});
+  // Track which IDs we've already initiated a fetch for
+  const fetchedIds = useRef<Set<string>>(new Set());
 
-  // Resolve display data: dynamic project or hardcoded
-  const displayProject = isDynamic ? dynamicProject : currentProject;
+  // Fetch all 5 projects once session is available
+  useEffect(() => {
+    if (!session) return;
+    PLANHUB_PROJECT_IDS.forEach((projectId) => {
+      if (fetchedIds.current.has(projectId)) return;
+      fetchedIds.current.add(projectId);
+      getLeadDetails(projectId, session.auth_token).then((lead) => {
+        setLiveProjects((prev) => ({
+          ...prev,
+          [projectId]: lead
+            ? { project: mapLeadToDisplay(lead), gcList: mapLeadToGcList(lead) }
+            : null,
+        }));
+      });
+    });
+  }, [session]);
+
+  const liveData = PLANHUB_ID_SET.has(activeProject)
+    ? liveProjects[activeProject]
+    : undefined;
+
+  // undefined → still loading; null → fetch failed; object → loaded
+  const isLoadingProject =
+    PLANHUB_ID_SET.has(activeProject) &&
+    activeView === "project" &&
+    liveData === undefined;
+
+  // Placeholder shown while loading so TypeScript stays happy downstream
+  const LOADING_PROJECT: ProjectDisplay = {
+    id: activeProject,
+    name: `Project ${activeProject}`,
+    dueDate: "—", description: "", location: "",
+    projectValue: "—", projectSize: "—",
+    startDate: "—", endDate: "—", status: "—",
+    constructionType: "—", projectType: "—",
+    buildingUse: "—", sectorLaborStatus: "—",
+    trades: [], totalTrades: 0,
+  };
+
+  const displayProject = isDynamic
+    ? dynamicProject!
+    : (liveData?.project ?? LOADING_PROJECT);
+  const displayGcList = isDynamic ? [] : (liveData?.gcList ?? []);
 
   const handleNavClick = (navId: string) => {
     if (navId === "bidboard") {
       setActiveView("bidboard");
       setDynamicProject(null);
       setAskAiOpen(false);
-    } else if (navId === "project1" || navId === "project2") {
+    } else if (PLANHUB_ID_SET.has(navId)) {
       setActiveView("project");
       setActiveProject(navId);
       setDynamicProject(null);
@@ -161,15 +210,15 @@ export default function Home() {
   };
 
   const handleProjectClick = (projectId: string) => {
-    if (projectId === "project1" || projectId === "project2") {
+    if (PLANHUB_ID_SET.has(projectId)) {
       handleNavClick(projectId);
     } else {
-      // Dynamic project
+      // Imported (IndexedDB) project
       const found = storedProjects.find((p) => p.id === projectId);
       if (found) {
         setDynamicProject(found);
         setActiveView("project");
-        setActiveProject(projectId as "project1"); // cast to satisfy type — won't match hardcoded
+        setActiveProject(projectId);
         setActiveTab("overview");
         setShowAllTrades(false);
         setGcExpanded(null);
@@ -180,10 +229,9 @@ export default function Home() {
 
   const handleProjectImported = (project: StoredProject) => {
     setStoredProjects((prev) => [...prev, project]);
-    // Navigate to the new project
     setDynamicProject(project);
     setActiveView("project");
-    setActiveProject(project.id as "project1");
+    setActiveProject(project.id);
     setActiveTab("overview");
   };
 
@@ -263,6 +311,10 @@ export default function Home() {
       activeView={activeView}
       user={user}
       onLogout={handleLogout}
+      projectNavItems={PLANHUB_PROJECT_IDS.map((id) => ({
+        id,
+        label: liveProjects[id]?.project?.name ?? id,
+      }))}
     >
       {activeView === "bidboard" ? (
         <>
@@ -270,6 +322,10 @@ export default function Home() {
             onProjectClick={handleProjectClick}
             onImportClick={() => setImportModalOpen(true)}
             storedProjects={storedProjects}
+            planhubProjects={PLANHUB_PROJECT_IDS.map((id) => ({
+              id,
+              display: liveProjects[id]?.project ?? null,
+            }))}
           />
           <ImportProjectModal
             open={importModalOpen}
@@ -284,7 +340,7 @@ export default function Home() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <h1 className="text-base font-semibold text-foreground truncate">
-              {isDynamic ? displayProject.name : `${currentProject.id} - ${currentProject.name}`}
+              {isDynamic ? displayProject.name : `${activeProject} - ${displayProject.name}`}
             </h1>
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground shrink-0">
               <Calendar className="h-3.5 w-3.5" />
@@ -393,9 +449,9 @@ export default function Home() {
           <BidSubmissionModal
             open={true}
             onOpenChange={() => setActiveTab("overview")}
-            projectName={isDynamic ? displayProject.name : `${currentProject.id} - ${currentProject.name}`}
-            gcName={isDynamic ? "General Contractor" : currentGcList[0].name}
-            gcEmail={isDynamic ? "bids@contractor.com" : currentGcList[0].email}
+            projectName={isDynamic ? displayProject.name : `${activeProject} - ${displayProject.name}`}
+            gcName={displayGcList[0]?.name ?? "General Contractor"}
+            gcEmail={displayGcList[0]?.email || "bids@contractor.com"}
             projectId={isDynamic ? dynamicProject.id : activeProject}
             projectContext={isDynamic ? dynamicProject.projectContext : undefined}
             mode="page"
@@ -416,10 +472,16 @@ export default function Home() {
       ))}
       {activeTab === "track-bid" ? (
         <div className="p-6 bg-[var(--bg-surface,#F5F7F9)]">
-          <BidTracker projectName={isDynamic ? displayProject.name : `${currentProject.id} - ${currentProject.name}`} gcName={isDynamic ? "General Contractor" : currentGcList[0].name} />
+          <BidTracker projectName={isDynamic ? displayProject.name : `${activeProject} - ${displayProject.name}`} gcName={displayGcList[0]?.name ?? "General Contractor"} />
         </div>
       ) : activeTab === "overview" ? (
         <div className="p-6 bg-[var(--bg-surface,#F5F7F9)]">
+          {isLoadingProject && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+              <div className="h-3 w-3 rounded-full border-2 border-[#00B894] border-t-transparent animate-spin" />
+              Loading project data…
+            </div>
+          )}
           <div className="flex gap-6 items-start">
             {/* Left column */}
             <div className="flex-1 min-w-0 space-y-5">
@@ -527,23 +589,36 @@ export default function Home() {
                 icon={<MapPin className="h-4 w-4 text-muted-foreground" />}
                 title="Project Location"
                 action={
-                  <button className="text-xs font-medium text-primary hover:underline">
-                    View full map
-                  </button>
+                  displayProject.location ? (
+                    <a
+                      href={`https://maps.google.com/maps?q=${encodeURIComponent(displayProject.location)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      View full map
+                    </a>
+                  ) : undefined
                 }
               >
                 <p className="text-sm text-foreground mb-3">
                   {displayProject.location || "Location TBD"}
                 </p>
-                {/* Map placeholder */}
-                <div className="w-full h-48 rounded-lg bg-accent border border-border flex items-center justify-center">
-                  <div className="text-center">
-                    <MapPin className="h-8 w-8 text-muted-foreground mx-auto" />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {displayProject.location ? displayProject.location.split(",").pop()?.trim() || "Location" : "Location TBD"}
-                    </p>
+                {displayProject.location ? (
+                  <iframe
+                    src={`https://maps.google.com/maps?q=${encodeURIComponent(displayProject.location)}&output=embed`}
+                    className="w-full h-48 rounded-lg border border-border"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                ) : (
+                  <div className="w-full h-48 rounded-lg bg-accent border border-border flex items-center justify-center">
+                    <div className="text-center">
+                      <MapPin className="h-8 w-8 text-muted-foreground mx-auto" />
+                      <p className="text-xs text-muted-foreground mt-1">Location TBD</p>
+                    </div>
                   </div>
-                </div>
+                )}
               </SectionCard>
 
               {/* General Contractors — only for hardcoded projects */}
@@ -564,7 +639,7 @@ export default function Home() {
 
                   {/* GC cards */}
                   <div className="space-y-3">
-                    {currentGcList.map((gc) => (
+                    {displayGcList.map((gc) => (
                       <div
                         key={gc.name}
                         className="border border-border rounded-lg p-4"
@@ -662,9 +737,9 @@ export default function Home() {
       <BidSubmissionModal
         open={modalOpen}
         onOpenChange={setModalOpen}
-        projectName={isDynamic ? displayProject.name : `${currentProject.id} - ${currentProject.name}`}
-        gcName={isDynamic ? "General Contractor" : currentGcList[0].name}
-        gcEmail={isDynamic ? "bids@contractor.com" : currentGcList[0].email}
+        projectName={isDynamic ? displayProject.name : `${activeProject} - ${displayProject.name}`}
+        gcName={displayGcList[0]?.name ?? "General Contractor"}
+        gcEmail={displayGcList[0]?.email || "bids@contractor.com"}
         projectId={isDynamic ? dynamicProject.id : activeProject}
         projectContext={isDynamic ? dynamicProject.projectContext : undefined}
       />

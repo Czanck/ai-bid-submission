@@ -51,7 +51,7 @@ Guidelines:
     ];
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5.4",
       messages,
       temperature: 0.3,
       max_tokens: 1024,
