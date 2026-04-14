@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BidSubmissionModal } from "@/components/bid-submission-modal";
@@ -13,6 +14,8 @@ import { dummyProject, project2, gcList, gcList2 } from "@/data/dummy-project";
 import { getAllProjects } from "@/lib/project-store";
 import type { StoredProject } from "@/lib/types";
 import { getFlag } from "@/lib/feature-flags";
+import { getSession, clearSession, getInitials, getDisplayName } from "@/lib/auth";
+import type { PlanhubSession } from "@/lib/auth";
 import {
   Calendar,
   Sparkles,
@@ -75,6 +78,20 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function Home() {
+  const router = useRouter();
+  const [session, setSession] = useState<PlanhubSession | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    const s = getSession();
+    if (!s) {
+      router.replace("/login");
+    } else {
+      setSession(s);
+      setAuthChecked(true);
+    }
+  }, [router]);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [bidSubmitted, setBidSubmitted] = useState(false);
@@ -96,6 +113,26 @@ export default function Home() {
   useEffect(() => {
     getAllProjects().then(setStoredProjects).catch(console.error);
   }, []);
+
+  async function handleLogout() {
+    const token = session?.auth_token;
+    clearSession();
+    if (token) {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ authToken: token }),
+      }).catch(() => {});
+    }
+    router.replace("/login");
+  }
+
+  const user = session
+    ? {
+        name: getDisplayName(session.email),
+        initials: getInitials(session.email),
+      }
+    : undefined;
 
   const isDynamic = dynamicProject !== null && activeView === "project" && activeProject !== "project1" && activeProject !== "project2";
 
@@ -208,6 +245,8 @@ export default function Home() {
     </div>
   );
 
+  if (!authChecked) return null;
+
   return (
     <PlanHubShell
       footer={activeView === "project" ? footer : undefined}
@@ -222,6 +261,8 @@ export default function Home() {
       onNavClick={handleNavClick}
       activeProject={activeView === "project" && !isDynamic ? activeProject : undefined}
       activeView={activeView}
+      user={user}
+      onLogout={handleLogout}
     >
       {activeView === "bidboard" ? (
         <>

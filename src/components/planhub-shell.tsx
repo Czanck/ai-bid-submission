@@ -17,8 +17,9 @@ import {
   Activity,
   Users,
   Plus,
+  LogOut,
 } from "lucide-react";
-import { dummyUser, navItems } from "@/data/dummy-project";
+import { navItems } from "@/data/dummy-project";
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   LayoutDashboard,
@@ -68,6 +69,8 @@ export function PlanHubShell({
   onNavClick,
   activeProject,
   activeView,
+  user,
+  onLogout,
 }: {
   children: React.ReactNode;
   footer?: React.ReactNode;
@@ -75,6 +78,8 @@ export function PlanHubShell({
   onNavClick?: (navId: string) => void;
   activeProject?: string;
   activeView?: string;
+  user?: { name: string; initials: string; company?: string };
+  onLogout?: () => void;
 }) {
   const [flagsOpen, setFlagsOpen] = useState(false);
 
@@ -173,7 +178,7 @@ export function PlanHubShell({
               <Building2 className="h-3.5 w-3.5 text-[var(--sidebar-accent-foreground)]" />
             </div>
             <span className="text-xs text-[var(--sidebar-foreground)] truncate">
-              {dummyUser.company}
+              {user?.company ?? ""}
             </span>
           </div>
           <button
@@ -205,16 +210,25 @@ export function PlanHubShell({
             <span className="text-yellow-300 text-sm">🔥</span>
             Pricing
           </button>
-          <div className="flex items-center gap-2 ml-2 cursor-pointer">
+          <div className="flex items-center gap-2 ml-2">
             <div className="h-8 w-8 rounded-full bg-[#00B894] flex items-center justify-center">
               <span className="text-white text-xs font-medium">
-                {dummyUser.initials}
+                {user?.initials ?? ""}
               </span>
             </div>
             <span className="text-sm font-medium text-foreground">
-              {dummyUser.name}
+              {user?.name ?? ""}
             </span>
             <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                title="Sign out"
+                className="ml-1 flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         </header>
 
