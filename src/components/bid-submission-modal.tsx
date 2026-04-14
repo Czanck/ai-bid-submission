@@ -898,8 +898,8 @@ export function BidSubmissionModal({
               transition={{ duration: 0.2 }}
               className="flex flex-col min-h-[80vh]"
             >
-              {/* Sticky header */}
-              <div className="px-6 pt-6 pb-4 shrink-0 sticky top-0 z-10 bg-card border-b border-border">
+              {/* Fixed header */}
+              <div className="px-6 pt-6 pb-4 shrink-0">
                 {mode === "page" ? (
                   <h2 className="text-xl font-semibold text-foreground">Review & Submit</h2>
                 ) : (
