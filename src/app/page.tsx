@@ -321,8 +321,9 @@ export default function Home() {
         />
       ) : (
       <>
-      {/* Project Header */}
-      <div className="bg-card border-b border-border px-6 py-3">
+      {/* Project Header + Tabs — sticky within scrollable main */}
+      <div className="sticky top-0 z-20 bg-card">
+      <div className="border-b border-border px-6 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <h1 className="text-base font-semibold text-foreground truncate">
@@ -359,7 +360,7 @@ export default function Home() {
       </div>
 
       {/* Tabs */}
-      <div className="bg-card border-b border-border px-6">
+      <div className="border-b border-border px-6">
         <div className="flex gap-0">
           {(activeTab === "submit-bid" || activeTab.startsWith("file-")) && (
             <button
@@ -427,6 +428,7 @@ export default function Home() {
           ))}
         </div>
       </div>
+      </div>{/* end sticky header+tabs wrapper */}
 
       {/* Content */}
       {/* Submit Bid — stays mounted (hidden) when file tab is open so user doesn't lose progress */}
