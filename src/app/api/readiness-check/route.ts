@@ -54,8 +54,11 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
     const projectId = (formData.get("projectId") as string) || "";
-    // Start context fetch in parallel with file processing — await later
-    const contextPromise = fetchProjectContext(projectId);
+    // Use client-provided context (from PlanIQ) if available; otherwise fetch from doc-intel
+    const clientContext = formData.get("projectContext") as string | null;
+    const contextPromise = clientContext
+      ? Promise.resolve(clientContext)
+      : fetchProjectContext(projectId);
 
     if (!files || files.length === 0) {
       return NextResponse.json(

@@ -15,6 +15,7 @@ import { getSession, clearSession, getInitials, getDisplayName } from "@/lib/aut
 import type { PlanhubSession } from "@/lib/auth";
 import { getLeadDetails, mapLeadToDisplay, mapLeadToGcList } from "@/lib/planhub-api";
 import type { ProjectDisplay, GcDisplay } from "@/lib/planhub-api";
+import { usePlanIQ } from "@/hooks/usePlanIQ";
 import {
   Calendar,
   Sparkles,
@@ -110,6 +111,35 @@ export default function Home() {
   const [gcExpanded, setGcExpanded] = useState<string | null>(null);
   const [activeProject, setActiveProject] = useState<string>(PLANHUB_PROJECT_IDS[0]);
   const [activeView, setActiveView] = useState<"project" | "bidboard">("bidboard");
+
+  const planiq = usePlanIQ();
+
+  // Connect when entering project view
+  useEffect(() => {
+    if (activeView === "project") planiq.connect();
+  }, [activeView, planiq.connect]);
+
+  // Send context to PlanIQ whenever the connection is established or the active project changes.
+  // PlanIQ requires a context message before any chat message so it knows which project to query.
+  useEffect(() => {
+    if (!planiq.isConnected || activeView !== "project" || !session) return;
+    planiq.send({
+      type: "context",
+      current_project: activeProject,
+      current_project_name: activeProject,
+      current_view: "dashboard",
+      auth_token: session.auth_token,
+      user_id: session.userId,         // keep as number — server does int()
+      company_id: session.companyId,   // keep as-is (null is valid)
+      user_type: session.userType,
+      user_role: session.userRole,
+    });
+  }, [planiq.isConnected, activeProject, activeView, session]); // planiq.send is stable
+
+  // Auto-open Ask AI panel whenever PlanIQ starts streaming
+  useEffect(() => {
+    if (planiq.isStreaming && activeView === "project") setAskAiOpen(true);
+  }, [planiq.isStreaming, activeView]);
 
 
   async function handleLogout() {
@@ -297,8 +327,10 @@ export default function Home() {
         <AskAiPanel
           open={askAiOpen}
           onClose={() => setAskAiOpen(false)}
-          projectId={activeProject}
-          projectContext={undefined}
+          messages={planiq.messages}
+          isStreaming={planiq.isStreaming}
+          statusText={planiq.statusText}
+          sendChat={planiq.sendChat}
         />
       ) : undefined}
       onNavClick={handleNavClick}
