@@ -193,6 +193,9 @@ export function BidSubmissionModal({
   const followUpInputRef = useRef<HTMLInputElement>(null);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
 
+  // Two Step Submission (feature-flagged)
+  const [twoStepPhase, setTwoStepPhase] = useState<1 | 2>(1);
+
   // Bid Readiness Check (feature-flagged)
   const [isReadinessChecking, setIsReadinessChecking] = useState(false);
   const [readinessCheck, setReadinessCheck] = useState<BidReadinessCheck | null>(null);
@@ -279,6 +282,7 @@ export function BidSubmissionModal({
           setReadinessExpanded(null);
           setReadinessOverrides(new Set());
           setProposalSectionOpen(true);
+          setTwoStepPhase(1);
         }, 300);
       }
       onOpenChange(newOpen);
@@ -677,6 +681,7 @@ export function BidSubmissionModal({
 
   const isLoading = step === "review" && isAnalyzing;
   const isSplitView = getFlag("split-view") && mode === "page";
+  const isTwoStep = getFlag("two-step-submission");
 
   const Skeleton = ({ className = "" }: { className?: string }) => (
     <div className={`animate-pulse rounded-md bg-muted ${className}`} />
@@ -918,9 +923,17 @@ export function BidSubmissionModal({
                   <>
                   {/* To field */}
                   <div>
+                    <div className="flex items-center justify-between">
                     <Label htmlFor="to" className="text-sm font-medium">
                       To
                     </Label>
+                    <div className="flex items-center gap-1.5">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 200 200" className="shrink-0 text-muted-foreground">
+                        <path d="m178.1 66.61h-21.03v-20.56c0-9.11-6.39-15.61-15.02-15.61h-120c-8.86 0-15 6.6-15 15.97v69.92c0 8.86 6.07 16.83 15 16.83h20.26v19.79c0 9.52 5.96 16.61 14.61 16.61h121.1c8.8 0 15.22-7.58 15.22-16.25v-70.58c0-9-6-16.12-15.22-16.12zm-31.12-18.66v18.66h-23.49l23.49-18.66zm-8.74-6.68-30.56 25.34h-50.87l-30.64-25.34h112.1zm-120.6 73.85v-67.87l28.38 24.42c-2.07 3.13-3.64 6.37-3.64 10.49v10.77l-24.74 22.19zm8.11 7.29 16.63-15.46v14.37l-16.63 1.09zm27.34 29.2v-67.78l37.53 31.88-37.53 35.9zm8.02 6.5 37.98-35.75 5.8 5.79c3.76 3.74 8.55 5.04 12.16 5.04 4.73 0 8.77-2.37 12.07-5.56l6.78-4.94 37.15 35.42h-111.9zm121.3-7.45-37.68-35.35 37.68-31.05v66.4zm-59.61-31.88c-3.82 3.41-8.33 3.43-12.49-0.36l-48.33-40.78h111.5l-50.65 41.14z" fill="currentColor"/>
+                      </svg>
+                      <span className="text-[11px] text-muted-foreground">Each GC will receive a separate, personalized email.</span>
+                    </div>
+                    </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-[8px] border border-input bg-muted/30 px-3 py-2 min-h-[42px]">
                       {/* Primary recipient pill */}
                       <span className="inline-flex items-center gap-1.5 rounded-md bg-success-surface text-primary text-sm px-2.5 py-1">
@@ -1039,15 +1052,6 @@ export function BidSubmissionModal({
                     </div>
                   )}
 
-                  {/* Individual send callout */}
-                  <div className="flex items-center gap-2 px-1 py-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 200 200" className="shrink-0 text-muted-foreground">
-                      <path d="m178.1 66.61h-21.03v-20.56c0-9.11-6.39-15.61-15.02-15.61h-120c-8.86 0-15 6.6-15 15.97v69.92c0 8.86 6.07 16.83 15 16.83h20.26v19.79c0 9.52 5.96 16.61 14.61 16.61h121.1c8.8 0 15.22-7.58 15.22-16.25v-70.58c0-9-6-16.12-15.22-16.12zm-31.12-18.66v18.66h-23.49l23.49-18.66zm-8.74-6.68-30.56 25.34h-50.87l-30.64-25.34h112.1zm-120.6 73.85v-67.87l28.38 24.42c-2.07 3.13-3.64 6.37-3.64 10.49v10.77l-24.74 22.19zm8.11 7.29 16.63-15.46v14.37l-16.63 1.09zm27.34 29.2v-67.78l37.53 31.88-37.53 35.9zm8.02 6.5 37.98-35.75 5.8 5.79c3.76 3.74 8.55 5.04 12.16 5.04 4.73 0 8.77-2.37 12.07-5.56l6.78-4.94 37.15 35.42h-111.9zm121.3-7.45-37.68-35.35 37.68-31.05v66.4zm-59.61-31.88c-3.82 3.41-8.33 3.43-12.49-0.36l-48.33-40.78h111.5l-50.65 41.14z" fill="currentColor"/>
-                    </svg>
-                    <p className="text-xs text-muted-foreground leading-snug">
-                      Each GC will receive a separate, personalized email.
-                    </p>
-                  </div>
                   </>
                   );
 
@@ -1976,7 +1980,23 @@ export function BidSubmissionModal({
                   </div>
                   );
 
-                  /* ── Conditional rendering: split view vs single column ── */
+                  /* ── Conditional rendering: two-step / split view / single column ── */
+
+                  if (isTwoStep) {
+                    if (twoStepPhase === 1) {
+                      return (
+                        <div className="space-y-5">
+                          {bidAmountSection}
+                          {toFieldSection}
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="space-y-5">
+                        {documentsSection}
+                      </div>
+                    );
+                  }
 
                   if (isSplitView) {
                     return (
@@ -2054,23 +2074,36 @@ export function BidSubmissionModal({
                     <div className="flex items-center gap-3">
                       <Button
                         variant="outline"
-                        onClick={() => { setStep("upload"); setBidScore(null); setScoreBreakdownOpen(false); setIsImprovingBid(false); setFollowUpInput(""); setIsFollowingUp(false); setFollowUpResponse(null); setIsReadinessChecking(false); setReadinessCheck(null); setReadinessExpanded(null); setReadinessOverrides(new Set()); setProposalSectionOpen(true); setTradeBreakdownExpanded(true); }}
+                        onClick={() => {
+                          if (isTwoStep && twoStepPhase === 2) {
+                            setTwoStepPhase(1);
+                          } else {
+                            setStep("upload"); setBidScore(null); setScoreBreakdownOpen(false); setIsImprovingBid(false); setFollowUpInput(""); setIsFollowingUp(false); setFollowUpResponse(null); setIsReadinessChecking(false); setReadinessCheck(null); setReadinessExpanded(null); setReadinessOverrides(new Set()); setProposalSectionOpen(true); setTradeBreakdownExpanded(true); setTwoStepPhase(1);
+                          }
+                        }}
                       >
                         Back
                       </Button>
-                      <Button onClick={handleSubmit} disabled={isLoading}>
-                        {isLoading ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Analyzing...
-                          </>
-                        ) : (
-                          <>
-                            <Send className="mr-2 h-4 w-4" />
-                            Submit Bid
-                          </>
-                        )}
-                      </Button>
+                      {isTwoStep && twoStepPhase === 1 ? (
+                        <Button onClick={() => setTwoStepPhase(2)}>
+                          Next step
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <Button onClick={handleSubmit} disabled={isLoading}>
+                          {isLoading ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Analyzing...
+                            </>
+                          ) : (
+                            <>
+                              <Send className="mr-2 h-4 w-4" />
+                              Submit Bid
+                            </>
+                          )}
+                        </Button>
+                      )}
                     </div>
                   </>
                 );
