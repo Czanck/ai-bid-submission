@@ -43,6 +43,15 @@ export const FEATURE_FLAGS: FeatureFlag[] = [
     description: "Two-column layout for the bid submission review step (requires Tabular Submission)",
     defaultValue: false,
     requires: "tabular-submission",
+    exclusionGroup: "layout-mode",
+  },
+  {
+    id: "two-step-submission",
+    label: "Two Step Submission",
+    description: "Break Review & Submit into two steps: Bid Amount + To, then Bid Readiness Check (requires Tabular Submission)",
+    defaultValue: false,
+    requires: "tabular-submission",
+    exclusionGroup: "layout-mode",
   },
 ];
 

@@ -194,6 +194,9 @@ export function BidSubmissionModal({
   const followUpInputRef = useRef<HTMLInputElement>(null);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
 
+  // Two Step Submission (feature-flagged)
+  const [twoStepPhase, setTwoStepPhase] = useState<1 | 2>(1);
+
   // Bid Readiness Check (feature-flagged)
   const [isReadinessChecking, setIsReadinessChecking] = useState(false);
   const [readinessCheck, setReadinessCheck] = useState<BidReadinessCheck | null>(null);
@@ -280,6 +283,7 @@ export function BidSubmissionModal({
           setReadinessExpanded(null);
           setReadinessOverrides(new Set());
           setProposalSectionOpen(true);
+          setTwoStepPhase(1);
         }, 300);
       }
       onOpenChange(newOpen);
@@ -700,6 +704,7 @@ export function BidSubmissionModal({
   const isLoading = step === "review" && isAnalyzing;
   const isChecklistSectionLoading = step === "review" && isChecklistLoading;
   const isSplitView = getFlag("split-view") && mode === "page";
+  const isTwoStep = getFlag("two-step-submission");
 
   const Skeleton = ({ className = "" }: { className?: string }) => (
     <div className={`animate-pulse rounded-md bg-muted ${className}`} />
@@ -937,142 +942,167 @@ export function BidSubmissionModal({
                 {(() => {
                   /* ── Section JSX variables for split-view support ── */
 
-                  const toFieldSection = (
-                  <>
-                  {/* To field */}
+                  const emailComposerSection = (
                   <div>
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="to" className="text-sm font-medium">
-                        To
-                      </Label>
-                      <div className="flex items-center gap-2">
-                        {!showCc && (
-                          <button
-                            onClick={() => setShowCc(true)}
-                            className="text-xs font-medium text-primary hover:underline"
-                          >
-                            CC
-                          </button>
-                        )}
-                        {!showBcc && (
-                          <button
-                            onClick={() => setShowBcc(true)}
-                            className="text-xs font-medium text-primary hover:underline"
-                          >
-                            BCC
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-[8px] border border-input bg-muted/30 px-3 py-2 min-h-[42px]">
-                      {/* Primary recipient pill */}
-                      <span className="inline-flex items-center gap-1.5 rounded-md bg-success-surface text-primary text-sm px-2.5 py-1">
-                        {gcEmail}
-                        <button
-                          className="text-muted-foreground hover:text-foreground"
-                          onClick={() => {}}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                      {/* Additional recipient pills */}
-                      {additionalTo.map((email, i) => (
-                        <span
-                          key={i}
-                          className="inline-flex items-center gap-1.5 rounded-md bg-success-surface text-primary text-sm px-2.5 py-1"
-                        >
-                          {email}
-                          <button
-                            className="text-muted-foreground hover:text-foreground"
-                            onClick={() =>
-                              setAdditionalTo(additionalTo.filter((_, idx) => idx !== i))
-                            }
-                          >
+                  <div className="rounded-[8px] border border-border overflow-hidden">
+                    {/* ── To row ── */}
+                    <div className="px-4 py-2 flex items-center gap-2">
+                      <Label htmlFor="to" className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">To:</Label>
+                      <div className="flex-1 flex flex-wrap items-center gap-2 min-h-[28px]">
+                        <span className="inline-flex items-center gap-1.5 rounded-md bg-success-surface text-primary text-sm px-2.5 py-1">
+                          {gcEmail}
+                          <button className="text-muted-foreground hover:text-foreground" onClick={() => {}}>
                             <X className="h-3 w-3" />
                           </button>
                         </span>
-                      ))}
-                      {/* Inline input for new recipient */}
-                      {showNewToInput ? (
-                        <input
-                          autoFocus
-                          type="email"
-                          value={newToInput}
-                          onChange={(e) => setNewToInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && newToInput.trim()) {
-                              setAdditionalTo([...additionalTo, newToInput.trim()]);
-                              setNewToInput("");
-                              setShowNewToInput(false);
-                            }
-                            if (e.key === "Escape") {
-                              setNewToInput("");
-                              setShowNewToInput(false);
-                            }
-                          }}
-                          onBlur={() => {
-                            if (newToInput.trim()) {
-                              setAdditionalTo([...additionalTo, newToInput.trim()]);
-                            }
-                            setNewToInput("");
-                            setShowNewToInput(false);
-                          }}
-                          placeholder="Add email..."
-                          className="bg-transparent outline-none text-sm min-w-[120px] flex-1"
-                        />
+                        {additionalTo.map((email, i) => (
+                          <span key={i} className="inline-flex items-center gap-1.5 rounded-md bg-success-surface text-primary text-sm px-2.5 py-1">
+                            {email}
+                            <button className="text-muted-foreground hover:text-foreground" onClick={() => setAdditionalTo(additionalTo.filter((_, idx) => idx !== i))}>
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                        {showNewToInput ? (
+                          <input
+                            autoFocus
+                            type="email"
+                            value={newToInput}
+                            onChange={(e) => setNewToInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && newToInput.trim()) { setAdditionalTo([...additionalTo, newToInput.trim()]); setNewToInput(""); setShowNewToInput(false); }
+                              if (e.key === "Escape") { setNewToInput(""); setShowNewToInput(false); }
+                            }}
+                            onBlur={() => { if (newToInput.trim()) { setAdditionalTo([...additionalTo, newToInput.trim()]); } setNewToInput(""); setShowNewToInput(false); }}
+                            placeholder="Add email..."
+                            className="bg-transparent outline-none text-sm min-w-[120px] flex-1"
+                          />
+                        ) : (
+                          <button onClick={() => setShowNewToInput(true)} className="h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground hover:bg-accent transition-colors">
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        )}
+                        <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                          {!showCc && (<button onClick={() => setShowCc(true)} className="text-xs font-medium text-primary hover:underline">CC</button>)}
+                          {!showBcc && (<button onClick={() => setShowBcc(true)} className="text-xs font-medium text-primary hover:underline">BCC</button>)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ── CC row (conditional) ── */}
+                    {showCc && (
+                      <div className="border-t border-border px-4 py-2 flex items-center gap-2">
+                        <Label htmlFor="cc" className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">CC:</Label>
+                        <Input id="cc" value={ccValue} onChange={(e) => setCcValue(e.target.value)} placeholder="Add CC recipients..." className="flex-1 border-0 shadow-none px-0 h-8 focus-visible:ring-0 bg-transparent" />
+                      </div>
+                    )}
+
+                    {/* ── BCC row (conditional) ── */}
+                    {showBcc && (
+                      <div className="border-t border-border px-4 py-2 flex items-center gap-2">
+                        <Label htmlFor="bcc" className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">BCC:</Label>
+                        <Input id="bcc" value={bccValue} onChange={(e) => setBccValue(e.target.value)} placeholder="Add BCC recipients..." className="flex-1 border-0 shadow-none px-0 h-8 focus-visible:ring-0 bg-transparent" />
+                      </div>
+                    )}
+
+                    {/* ── Subject row ── */}
+                    <div className="border-t border-border px-4 py-2 flex items-center gap-2">
+                      <Label htmlFor="subject" className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">Subject:</Label>
+                      {isLoading ? (
+                        <Skeleton className="h-5 w-3/4" />
                       ) : (
-                        <button
-                          onClick={() => setShowNewToInput(true)}
-                          className="h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground hover:bg-accent transition-colors"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </button>
+                        <Input id="subject" value={`${projectName} - Bid Submission`} readOnly className="flex-1 border-0 shadow-none px-0 h-8 focus-visible:ring-0 bg-transparent" />
+                      )}
+                    </div>
+
+                    {/* ── Message row ── */}
+                    <div className="border-t border-border px-4 py-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <Label htmlFor="message" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Message:</Label>
+                        {!isLoading && (
+                          <button onClick={() => setShowTemplateEditor(!showTemplateEditor)} className="flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+                            <Pencil className="h-3 w-3" />
+                            {showTemplateEditor ? "Done editing" : "Customize template"}
+                          </button>
+                        )}
+                      </div>
+                      {isLoading ? (
+                        <div className="space-y-2">
+                          <Skeleton className="h-4 w-3/4" />
+                          <Skeleton className="h-4 w-full" />
+                          <Skeleton className="h-4 w-5/6" />
+                          <Skeleton className="h-4 w-2/3" />
+                        </div>
+                      ) : showTemplateEditor ? (
+                        <div className="space-y-3">
+                          <div>
+                            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Insert variable</span>
+                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                              {[
+                                { label: "GC Name", value: "{{GC Name}}" },
+                                { label: "Project Name", value: "{{Project Name}}" },
+                                { label: "Bid Amount", value: "{{Bid Amount}}" },
+                                { label: "Your Company", value: "{{Your Company}}" },
+                                { label: "Due Date", value: "{{Due Date}}" },
+                                { label: "Your Name", value: "{{Your Name}}" },
+                              ].map((v) => (
+                                <button
+                                  key={v.label}
+                                  onClick={() => {
+                                    const ta = templateTextareaRef.current;
+                                    if (ta) {
+                                      const start = ta.selectionStart;
+                                      const end = ta.selectionEnd;
+                                      const before = messageTemplate.slice(0, start);
+                                      const after = messageTemplate.slice(end);
+                                      const newVal = before + v.value + after;
+                                      setMessageTemplate(newVal);
+                                      setMessageBody(applyTemplate(newVal));
+                                      setTimeout(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = start + v.value.length; }, 0);
+                                    } else {
+                                      setMessageTemplate(messageTemplate + v.value);
+                                      setMessageBody(applyTemplate(messageTemplate + v.value));
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-info-surface text-info-foreground border border-info-border hover:bg-info-surface/80 transition-colors"
+                                >
+                                  <Plus className="h-2.5 w-2.5" />
+                                  {v.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <Textarea
+                            ref={templateTextareaRef}
+                            value={messageTemplate}
+                            onChange={(e) => { setMessageTemplate(e.target.value); setMessageBody(applyTemplate(e.target.value)); }}
+                            rows={8}
+                            className="font-mono text-sm border-0 shadow-none rounded-none focus-visible:ring-0 resize-y"
+                            placeholder="Write your template using {{Variable Name}} syntax..."
+                          />
+                          <p className="text-[11px] text-muted-foreground">
+                            Variables like {"{{GC Name}}"} will be replaced with actual values in the message above.
+                          </p>
+                        </div>
+                      ) : (
+                        <Textarea
+                          id="message"
+                          value={messageBody}
+                          onChange={(e) => setMessageBody(e.target.value)}
+                          rows={6}
+                          className="border-0 shadow-none rounded-none focus-visible:ring-0 resize-y px-0"
+                        />
                       )}
                     </div>
                   </div>
-
-                  {/* CC field */}
-                  {showCc && (
-                    <div>
-                      <Label htmlFor="cc" className="text-sm font-medium">
-                        CC
-                      </Label>
-                      <Input
-                        id="cc"
-                        value={ccValue}
-                        onChange={(e) => setCcValue(e.target.value)}
-                        placeholder="Add CC recipients..."
-                        className="mt-1.5"
-                      />
-                    </div>
-                  )}
-
-                  {/* BCC field */}
-                  {showBcc && (
-                    <div>
-                      <Label htmlFor="bcc" className="text-sm font-medium">
-                        BCC
-                      </Label>
-                      <Input
-                        id="bcc"
-                        value={bccValue}
-                        onChange={(e) => setBccValue(e.target.value)}
-                        placeholder="Add BCC recipients..."
-                        className="mt-1.5"
-                      />
-                    </div>
-                  )}
-
-                  {/* Individual send callout */}
-                  <div className="flex items-center gap-2.5 rounded-lg bg-blue-50 border border-blue-100 px-3 py-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 200 200" className="shrink-0 text-blue-600">
+                  {/* Callout below the card */}
+                  <div className="flex items-center gap-2 mt-2 px-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 200 200" className="shrink-0 text-muted-foreground">
                       <path d="m178.1 66.61h-21.03v-20.56c0-9.11-6.39-15.61-15.02-15.61h-120c-8.86 0-15 6.6-15 15.97v69.92c0 8.86 6.07 16.83 15 16.83h20.26v19.79c0 9.52 5.96 16.61 14.61 16.61h121.1c8.8 0 15.22-7.58 15.22-16.25v-70.58c0-9-6-16.12-15.22-16.12zm-31.12-18.66v18.66h-23.49l23.49-18.66zm-8.74-6.68-30.56 25.34h-50.87l-30.64-25.34h112.1zm-120.6 73.85v-67.87l28.38 24.42c-2.07 3.13-3.64 6.37-3.64 10.49v10.77l-24.74 22.19zm8.11 7.29 16.63-15.46v14.37l-16.63 1.09zm27.34 29.2v-67.78l37.53 31.88-37.53 35.9zm8.02 6.5 37.98-35.75 5.8 5.79c3.76 3.74 8.55 5.04 12.16 5.04 4.73 0 8.77-2.37 12.07-5.56l6.78-4.94 37.15 35.42h-111.9zm121.3-7.45-37.68-35.35 37.68-31.05v66.4zm-59.61-31.88c-3.82 3.41-8.33 3.43-12.49-0.36l-48.33-40.78h111.5l-50.65 41.14z" fill="currentColor"/>
                     </svg>
-                    <p className="text-xs text-blue-700 leading-snug">
-                      Each GC will receive an individual, personalized email — not a group message.
-                    </p>
+                    <span className="text-xs text-muted-foreground">Each GC will receive a separate, personalized email.</span>
                   </div>
-                  </>
+                  </div>
                   );
 
                   const bidAmountSection = (
@@ -1094,121 +1124,6 @@ export function BidSubmissionModal({
                   </div>
                   );
 
-                  const subjectSection = (
-                  <div>
-                    <Label htmlFor="subject" className="text-sm font-medium">
-                      Subject
-                    </Label>
-                    {isLoading ? (
-                      <Skeleton className="mt-1.5 h-10 w-full" />
-                    ) : (
-                      <Input
-                        id="subject"
-                        value={`${projectName} - Bid Submission`}
-                        readOnly
-                        className="mt-1.5 bg-muted/30"
-                      />
-                    )}
-                  </div>
-                  );
-
-                  const messageBodySection = (
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="message" className="text-sm font-medium">
-                        Message
-                      </Label>
-                      {!isLoading && (
-                        <button
-                          onClick={() => setShowTemplateEditor(!showTemplateEditor)}
-                          className="flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-                        >
-                          <Pencil className="h-3 w-3" />
-                          {showTemplateEditor ? "Done editing" : "Customize template"}
-                        </button>
-                      )}
-                    </div>
-
-                    {isLoading ? (
-                      <div className="mt-1.5 space-y-2">
-                        <Skeleton className="h-4 w-3/4" />
-                        <Skeleton className="h-4 w-full" />
-                        <Skeleton className="h-4 w-5/6" />
-                        <Skeleton className="h-4 w-2/3" />
-                      </div>
-                    ) : showTemplateEditor ? (
-                      <div className="mt-1.5 space-y-3">
-                        {/* Variable chips */}
-                        <div>
-                          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                            Insert variable
-                          </span>
-                          <div className="flex flex-wrap gap-1.5 mt-1.5">
-                            {[
-                              { label: "GC Name", value: "{{GC Name}}" },
-                              { label: "Project Name", value: "{{Project Name}}" },
-                              { label: "Bid Amount", value: "{{Bid Amount}}" },
-                              { label: "Your Company", value: "{{Your Company}}" },
-                              { label: "Due Date", value: "{{Due Date}}" },
-                              { label: "Your Name", value: "{{Your Name}}" },
-                            ].map((v) => (
-                              <button
-                                key={v.label}
-                                onClick={() => {
-                                  const ta = templateTextareaRef.current;
-                                  if (ta) {
-                                    const start = ta.selectionStart;
-                                    const end = ta.selectionEnd;
-                                    const before = messageTemplate.slice(0, start);
-                                    const after = messageTemplate.slice(end);
-                                    const newVal = before + v.value + after;
-                                    setMessageTemplate(newVal);
-                                    // Apply template to message
-                                    setMessageBody(applyTemplate(newVal));
-                                    setTimeout(() => {
-                                      ta.focus();
-                                      ta.selectionStart = ta.selectionEnd = start + v.value.length;
-                                    }, 0);
-                                  } else {
-                                    setMessageTemplate(messageTemplate + v.value);
-                                    setMessageBody(applyTemplate(messageTemplate + v.value));
-                                  }
-                                }}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-info-surface text-info-foreground border border-info-border hover:bg-info-surface/80 transition-colors"
-                              >
-                                <Plus className="h-2.5 w-2.5" />
-                                {v.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        {/* Template editor */}
-                        <Textarea
-                          ref={templateTextareaRef}
-                          value={messageTemplate}
-                          onChange={(e) => {
-                            setMessageTemplate(e.target.value);
-                            setMessageBody(applyTemplate(e.target.value));
-                          }}
-                          rows={8}
-                          className="font-mono text-sm"
-                          placeholder="Write your template using {{Variable Name}} syntax..."
-                        />
-                        <p className="text-[11px] text-muted-foreground">
-                          Variables like {"{{GC Name}}"} will be replaced with actual values in the message above.
-                        </p>
-                      </div>
-                    ) : (
-                      <Textarea
-                        id="message"
-                        value={messageBody}
-                        onChange={(e) => setMessageBody(e.target.value)}
-                        rows={6}
-                        className="mt-1.5"
-                      />
-                    )}
-                  </div>
-                  );
 
                   const documentsSection = (
                   /* Documents & Requirements — combined section */
@@ -2000,19 +1915,39 @@ export function BidSubmissionModal({
                   </div>
                   );
 
-                  /* ── Conditional rendering: split view vs single column ── */
+                  /* ── Conditional rendering: two-step / split view / single column ── */
+
+                  if (isTwoStep) {
+                    if (twoStepPhase === 1) {
+                      return (
+                        <div className="space-y-5">
+                          {bidAmountWithTradeBreakdown}
+                          {emailComposerSection}
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="space-y-5">
+                        {documentsSection}
+                      </div>
+                    );
+                  }
 
                   if (isSplitView) {
                     return (
                       <div className="grid grid-cols-2 gap-6">
-                        <div className="bg-card border border-border rounded-lg p-5 space-y-5">
-                          {toFieldSection}
-                          {subjectSection}
-                          {messageBodySection}
-                          {separatorAndShareSection}
+                        <div className="space-y-4">
+                          <div className="bg-card border border-border rounded-lg p-5">
+                            {bidAmountWithTradeBreakdown}
+                          </div>
+                          <div className="space-y-4">
+                            {emailComposerSection}
+                            <div className="px-1">
+                              {separatorAndShareSection}
+                            </div>
+                          </div>
                         </div>
                         <div className="bg-card border border-border rounded-lg p-5 space-y-5">
-                          {bidAmountWithTradeBreakdown}
                           {documentsSection}
                         </div>
                       </div>
@@ -2021,10 +1956,8 @@ export function BidSubmissionModal({
 
                   return (
                     <div className="space-y-5">
-                      {toFieldSection}
+                      {emailComposerSection}
                       {bidAmountSection}
-                      {subjectSection}
-                      {messageBodySection}
                       {documentsSection}
                       {tradeBreakdownSection}
                       {separatorAndShareSection}
@@ -2074,23 +2007,36 @@ export function BidSubmissionModal({
                     <div className="flex items-center gap-3">
                       <Button
                         variant="outline"
-                        onClick={() => { setStep("upload"); setBidScore(null); setScoreBreakdownOpen(false); setIsImprovingBid(false); setIsChecklistLoading(false); setFollowUpInput(""); setIsFollowingUp(false); setFollowUpResponse(null); setIsReadinessChecking(false); setReadinessCheck(null); setReadinessExpanded(null); setReadinessOverrides(new Set()); setProposalSectionOpen(true); setTradeBreakdownExpanded(true); }}
+                        onClick={() => {
+                          if (isTwoStep && twoStepPhase === 2) {
+                            setTwoStepPhase(1);
+                          } else {
+                            setStep("upload"); setBidScore(null); setScoreBreakdownOpen(false); setIsImprovingBid(false); setIsChecklistLoading(false); setFollowUpInput(""); setIsFollowingUp(false); setFollowUpResponse(null); setIsReadinessChecking(false); setReadinessCheck(null); setReadinessExpanded(null); setReadinessOverrides(new Set()); setProposalSectionOpen(true); setTradeBreakdownExpanded(true); setTwoStepPhase(1);
+                          }
+                        }}
                       >
                         Back
                       </Button>
-                      <Button onClick={handleSubmit} disabled={isLoading || isChecklistSectionLoading}>
-                        {isLoading || isChecklistSectionLoading ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Analyzing...
-                          </>
-                        ) : (
-                          <>
-                            <Send className="mr-2 h-4 w-4" />
-                            Submit Bid
-                          </>
-                        )}
-                      </Button>
+                      {isTwoStep && twoStepPhase === 1 ? (
+                        <Button onClick={() => setTwoStepPhase(2)}>
+                          Next step
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <Button onClick={handleSubmit} disabled={isLoading || isChecklistSectionLoading}>
+                          {isLoading || isChecklistSectionLoading ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Analyzing...
+                            </>
+                          ) : (
+                            <>
+                              <Send className="mr-2 h-4 w-4" />
+                              Submit Bid
+                            </>
+                          )}
+                        </Button>
+                      )}
                     </div>
                   </>
                 );
