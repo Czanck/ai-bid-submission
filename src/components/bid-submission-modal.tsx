@@ -918,29 +918,9 @@ export function BidSubmissionModal({
                   <>
                   {/* To field */}
                   <div>
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="to" className="text-sm font-medium">
-                        To
-                      </Label>
-                      <div className="flex items-center gap-2">
-                        {!showCc && (
-                          <button
-                            onClick={() => setShowCc(true)}
-                            className="text-xs font-medium text-primary hover:underline"
-                          >
-                            CC
-                          </button>
-                        )}
-                        {!showBcc && (
-                          <button
-                            onClick={() => setShowBcc(true)}
-                            className="text-xs font-medium text-primary hover:underline"
-                          >
-                            BCC
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                    <Label htmlFor="to" className="text-sm font-medium">
+                      To
+                    </Label>
                     <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-[8px] border border-input bg-muted/30 px-3 py-2 min-h-[42px]">
                       {/* Primary recipient pill */}
                       <span className="inline-flex items-center gap-1.5 rounded-md bg-success-surface text-primary text-sm px-2.5 py-1">
@@ -1005,6 +985,25 @@ export function BidSubmissionModal({
                           <Plus className="h-4 w-4" />
                         </button>
                       )}
+                      {/* CC / BCC buttons inside the input bar */}
+                      <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                        {!showCc && (
+                          <button
+                            onClick={() => setShowCc(true)}
+                            className="text-xs font-medium text-primary hover:underline"
+                          >
+                            CC
+                          </button>
+                        )}
+                        {!showBcc && (
+                          <button
+                            onClick={() => setShowBcc(true)}
+                            className="text-xs font-medium text-primary hover:underline"
+                          >
+                            BCC
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
