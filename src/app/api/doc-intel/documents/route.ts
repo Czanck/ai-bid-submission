@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 const DOC_INTEL_API_URL =
-  process.env.DOC_INTEL_API_URL ?? "https://doc-intel-api.dev.planhub.com";
+  process.env.DOC_INTEL_API_URL ?? "https://doc-intel-api.qa.planhub.com";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);

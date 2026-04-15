@@ -710,7 +710,7 @@ export default function Home() {
                 )}
               </div>
               <a
-                href={`https://doc-intel.dev.planhub.com/projects/${activeProject}`}
+                href={`https://doc-intel.qa.planhub.com/projects/${activeProject}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 px-3 h-7 rounded-md text-xs font-medium bg-[#00B894] text-white hover:bg-[#009F7F] transition-colors"

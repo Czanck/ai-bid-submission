@@ -1,4 +1,4 @@
-const DOC_INTEL_BASE_URL = "https://doc-intel-api.dev.planhub.com";
+const DOC_INTEL_BASE_URL = "https://doc-intel-api.qa.planhub.com";
 
 /**
  * Fetches project context from the doc-intel RAG API.
