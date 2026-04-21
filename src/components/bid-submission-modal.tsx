@@ -1253,7 +1253,7 @@ export function BidSubmissionModal({
                                                         : "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
                                                     }`}
                                                   >
-                                                    {isOverridden ? <><X className="h-3 w-3" /> Undo</> : <><CheckCircle2 className="h-3 w-3" /> Looks Good</>}
+                                                    {isOverridden ? <><X className="h-3 w-3" /> Undo</> : <><CheckCircle2 className="h-3 w-3" /> Dismiss</>}
                                                   </button>
                                                   {isOverridden && !feedbackGiven.has(`trade-${i}`) && (
                                                     <button
@@ -1352,7 +1352,7 @@ export function BidSubmissionModal({
                                                     : "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
                                                 }`}
                                               >
-                                                {isOverridden ? <><X className="h-3 w-3" /> Undo</> : <><CheckCircle2 className="h-3 w-3" /> Looks Good</>}
+                                                {isOverridden ? <><X className="h-3 w-3" /> Undo</> : <><CheckCircle2 className="h-3 w-3" /> Dismiss</>}
                                               </button>
                                               {isOverridden && !feedbackGiven.has(`unmatched-${i}`) && (
                                                 <button
