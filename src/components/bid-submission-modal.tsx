@@ -1233,6 +1233,12 @@ export function BidSubmissionModal({
                                               {readinessItem && readinessItem.status !== "aligned" && (
                                                 <div className="mt-1.5 flex items-center gap-2 relative">
                                                   <button
+                                                    onClick={() => onOpenSource?.(readinessItem.trade, readinessItem.detail)}
+                                                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md border border-border bg-white text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
+                                                  >
+                                                    <FileText className="h-3 w-3" /> Source
+                                                  </button>
+                                                  <button
                                                     onClick={() => {
                                                       setReadinessOverrides((prev) => {
                                                         const next = new Set(prev);
@@ -1248,12 +1254,6 @@ export function BidSubmissionModal({
                                                     }`}
                                                   >
                                                     {isOverridden ? <><X className="h-3 w-3" /> Undo</> : <><CheckCircle2 className="h-3 w-3" /> Looks Good</>}
-                                                  </button>
-                                                  <button
-                                                    onClick={() => onOpenSource?.(readinessItem.trade, readinessItem.detail)}
-                                                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md border border-border bg-white text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
-                                                  >
-                                                    <FileText className="h-3 w-3" /> Source
                                                   </button>
                                                   {isOverridden && !feedbackGiven.has(`trade-${i}`) && (
                                                     <button
@@ -1332,6 +1332,12 @@ export function BidSubmissionModal({
                                           {item.status !== "aligned" && (
                                             <div className="mt-1.5 flex items-center gap-2 relative">
                                               <button
+                                                onClick={() => onOpenSource?.(item.trade, item.detail)}
+                                                className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md border border-border bg-white text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
+                                              >
+                                                <FileText className="h-3 w-3" /> Source
+                                              </button>
+                                              <button
                                                 onClick={() => {
                                                   setReadinessOverrides((prev) => {
                                                     const next = new Set(prev);
@@ -1347,12 +1353,6 @@ export function BidSubmissionModal({
                                                 }`}
                                               >
                                                 {isOverridden ? <><X className="h-3 w-3" /> Undo</> : <><CheckCircle2 className="h-3 w-3" /> Looks Good</>}
-                                              </button>
-                                              <button
-                                                onClick={() => onOpenSource?.(item.trade, item.detail)}
-                                                className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md border border-border bg-white text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
-                                              >
-                                                <FileText className="h-3 w-3" /> Source
                                               </button>
                                               {isOverridden && !feedbackGiven.has(`unmatched-${i}`) && (
                                                 <button
