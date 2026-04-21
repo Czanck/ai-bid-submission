@@ -67,6 +67,8 @@ interface BidSubmissionModalProps {
   footerPortalRef?: React.RefObject<HTMLDivElement | null>;
   /** Called when user clicks "Source" on a misaligned item */
   onOpenSource?: (trade: string, detail: string) => void;
+  /** Called to open Ask AI panel with pre-loaded context */
+  onOpenAskAi?: (message: string) => void;
 }
 
 const statusConfig: Record<
@@ -141,6 +143,7 @@ export function BidSubmissionModal({
   onSubmitComplete,
   footerPortalRef,
   onOpenSource,
+  onOpenAskAi,
 }: BidSubmissionModalProps) {
   const applyTemplate = useCallback(
     (tpl: string) => {
@@ -196,11 +199,13 @@ export function BidSubmissionModal({
   // Two Step Submission (feature-flagged)
   const [twoStepPhase, setTwoStepPhase] = useState<1 | 2>(1);
 
-  // Bid Readiness Check (feature-flagged)
+  // Bid Review (feature-flagged)
   const [isReadinessChecking, setIsReadinessChecking] = useState(false);
   const [readinessCheck, setReadinessCheck] = useState<BidReadinessCheck | null>(null);
   const [readinessExpanded, setReadinessExpanded] = useState<boolean | null>(null); // null = unset, will default based on result
   const [readinessOverrides, setReadinessOverrides] = useState<Set<number>>(new Set()); // indices of items manually marked aligned
+  const [feedbackPopoverIndex, setFeedbackPopoverIndex] = useState<string | null>(null); // "trade-idx" or "unmatched-idx"
+  const [feedbackGiven, setFeedbackGiven] = useState<Set<string>>(new Set()); // tracks which items got feedback
   const [proposalSectionOpen, setProposalSectionOpen] = useState(true);
   const [requirementsExpanded, setRequirementsExpanded] = useState(true);
   const [tradeBreakdownExpanded, setTradeBreakdownExpanded] = useState(true);
@@ -378,7 +383,7 @@ export function BidSubmissionModal({
       const readinessCheckEnabled = getFlag("bid-readiness-check") || getFlag("bid-readiness-check-plus");
 
       if (readinessCheckEnabled) {
-        // Feature-flagged: Bid Readiness Check (scope alignment)
+        // Feature-flagged: Bid Review (scope alignment)
         setIsReadinessChecking(true);
         setReadinessCheck(null);
         setReadinessExpanded(null);
@@ -904,24 +909,33 @@ export function BidSubmissionModal({
               className="flex flex-col min-h-[80vh]"
             >
               {/* Fixed header */}
+              {(isSplitView || isTwoStep) && (
               <div className="px-6 pt-6 pb-4 shrink-0">
                 {mode === "page" ? (
-                  <h2 className="text-xl font-semibold text-foreground">Review & Submit</h2>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-semibold text-foreground">Review & Submit</h2>
+                    {isTwoStep && <span className="text-xs font-medium text-muted-foreground">Step {twoStepPhase} of 2</span>}
+                  </div>
                 ) : (
                   <DialogHeader>
-                    <DialogTitle className="text-xl">Review & Submit</DialogTitle>
+                    <div className="flex items-center justify-between">
+                      <DialogTitle className="text-xl">Review & Submit</DialogTitle>
+                      {isTwoStep && <span className="text-xs font-medium text-muted-foreground">Step {twoStepPhase} of 2</span>}
+                    </div>
                   </DialogHeader>
                 )}
               </div>
+              )}
 
               {/* Scrollable body */}
-              <div className="flex-1 px-6 pb-4">
+              <div className={`flex-1 px-6 pb-4 ${!(isSplitView || isTwoStep) ? "pt-6" : ""}`}>
                 {(() => {
                   /* ── Section JSX variables for split-view support ── */
 
                   const emailComposerSection = (
                   <div>
-                  <div className="rounded-[8px] border border-border overflow-hidden">
+                  <Label className="text-base font-semibold">Bid Email</Label>
+                  <div className="mt-1.5 rounded-[8px] border border-border overflow-hidden">
                     {/* ── To row ── */}
                     <div className="px-4 py-2 flex items-center gap-2">
                       <Label htmlFor="to" className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">To:</Label>
@@ -1101,8 +1115,425 @@ export function BidSubmissionModal({
                   </div>
                   );
 
+                  // Combined Bid Readiness section (amount + trade breakdown with readiness check)
+                  const bidReadinessSection = (() => {
+                    const hasReadiness = !isLoading && readinessCheck !== null;
+                    const hasUnresolved = hasReadiness ? readinessCheck!.items.some(
+                      (item, i) => !readinessOverrides.has(i) && (item.status === "misaligned" || item.status === "missing")
+                    ) : false;
+                    const effectiveResult = hasUnresolved ? "needs-review" : "looks-good";
+                    const tradeBreakdown = analysisResult?.extractedData.tradeBreakdown ?? [];
 
-                  const documentsSection = (
+                    return (
+                    <div>
+                      {/* Header */}
+                      <div className="flex items-center justify-between mb-1.5">
+                        <Label className="text-base font-semibold">Bid Review</Label>
+                        {isLoading || isReadinessChecking ? (
+                          <div className="h-6 w-24 rounded-full bg-purple-100 animate-pulse" />
+                        ) : hasReadiness ? (
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            effectiveResult === "looks-good" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+                          }`}>
+                            {effectiveResult === "looks-good" ? <><CheckCircle2 className="h-3.5 w-3.5" /> Looks Good</> : <><ShieldAlert className="h-3.5 w-3.5" /> Needs Review</>}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {/* Card */}
+                      <div className="rounded-[8px] border border-border overflow-hidden">
+                        {/* Amount row */}
+                        <div className="px-4 h-10 flex items-center gap-2">
+                          <Label htmlFor="bidAmount" className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">Total:</Label>
+                          {isLoading ? (
+                            <Skeleton className="h-5 flex-1" />
+                          ) : (
+                            <input
+                              id="bidAmount"
+                              value={bidAmount}
+                              onChange={(e) => setBidAmount(e.target.value)}
+                              placeholder="$0.00"
+                              className="flex-1 bg-transparent border-0 outline-none text-sm font-semibold text-foreground placeholder:text-muted-foreground"
+                            />
+                          )}
+                        </div>
+
+                        {/* Breakdown row */}
+                        <div className="border-t border-border">
+                          <button
+                            onClick={() => setTradeBreakdownExpanded(!tradeBreakdownExpanded)}
+                            className="w-full px-4 h-10 flex items-center gap-2"
+                          >
+                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">
+                              Breakdown:
+                            </span>
+                            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ml-auto ${tradeBreakdownExpanded ? "rotate-180" : ""}`} />
+                          </button>
+
+                          <AnimatePresence>
+                            {tradeBreakdownExpanded && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="overflow-hidden"
+                              >
+                                {isLoading || isReadinessChecking ? (
+                                  <div className="px-4 pb-3 space-y-2">
+                                    {[0, 1, 2].map((i) => (
+                                      <div key={i} className="h-14 rounded-lg bg-purple-100 animate-pulse" />
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="px-4 pb-3 space-y-1.5">
+                                    {tradeBreakdown.map((trade, i) => {
+                                      // Find matching readiness item
+                                      const readinessItem = hasReadiness ? readinessCheck!.items.find(
+                                        (rc) => rc.trade.toLowerCase().includes(trade.trade.toLowerCase().split(" ")[0]) ||
+                                                trade.trade.toLowerCase().includes(rc.trade.toLowerCase().split(" ")[0])
+                                      ) : null;
+                                      const isOverridden = readinessItem ? readinessOverrides.has(readinessCheck!.items.indexOf(readinessItem)) : false;
+                                      const effectiveStatus = isOverridden ? "aligned" : (readinessItem?.status ?? "aligned");
+                                      const itemIndex = readinessItem ? readinessCheck!.items.indexOf(readinessItem) : -1;
+
+                                      return (
+                                        <div key={i} className="rounded-lg border border-border bg-card px-3.5 py-3">
+                                          <div className="flex items-start justify-between gap-3">
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-sm font-semibold text-foreground">{trade.trade}</span>
+                                                {readinessItem && (
+                                                  <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                                                    effectiveStatus === "aligned" ? "bg-emerald-100 text-emerald-700" :
+                                                    effectiveStatus === "misaligned" ? "bg-red-100 text-red-700" :
+                                                    "bg-amber-100 text-amber-700"
+                                                  }`}>
+                                                    {effectiveStatus === "aligned" ? "Aligned" : effectiveStatus === "misaligned" ? "Misaligned" : "Missing"}
+                                                  </span>
+                                                )}
+                                                {isOverridden && (
+                                                  <span className="text-[10px] text-muted-foreground italic">manually resolved</span>
+                                                )}
+                                              </div>
+                                              {readinessItem && (
+                                                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                                                  {readinessItem.detail}
+                                                  {!isOverridden && readinessItem.fix && (
+                                                    <button
+                                                      onClick={() => onOpenAskAi?.(`For the "${trade.trade}" trade on this bid: ${readinessItem.detail}\n\nHow to fix: ${readinessItem.fix}\n\nPlease explain this in more detail and suggest specific steps.`)}
+                                                      className="ml-1.5 text-xs font-medium text-primary hover:underline inline"
+                                                    >
+                                                      More Info
+                                                    </button>
+                                                  )}
+                                                </p>
+                                              )}
+                                              {/* Action buttons */}
+                                              {readinessItem && readinessItem.status !== "aligned" && (
+                                                <div className="mt-1.5 flex items-center gap-2 relative">
+                                                  <button
+                                                    onClick={() => {
+                                                      setReadinessOverrides((prev) => {
+                                                        const next = new Set(prev);
+                                                        if (next.has(itemIndex)) next.delete(itemIndex);
+                                                        else next.add(itemIndex);
+                                                        return next;
+                                                      });
+                                                    }}
+                                                    className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md border shadow-sm transition-colors ${
+                                                      isOverridden
+                                                        ? "border-border bg-white text-muted-foreground hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                                                        : "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
+                                                    }`}
+                                                  >
+                                                    {isOverridden ? <><X className="h-3 w-3" /> Undo</> : <><CheckCircle2 className="h-3 w-3" /> Looks Good</>}
+                                                  </button>
+                                                  <button
+                                                    onClick={() => onOpenSource?.(readinessItem.trade, readinessItem.detail)}
+                                                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md border border-border bg-white text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
+                                                  >
+                                                    <FileText className="h-3 w-3" /> Source
+                                                  </button>
+                                                  {isOverridden && !feedbackGiven.has(`trade-${i}`) && (
+                                                    <button
+                                                      onClick={() => setFeedbackPopoverIndex(feedbackPopoverIndex === `trade-${i}` ? null : `trade-${i}`)}
+                                                      className="text-[11px] font-medium text-primary hover:underline"
+                                                    >
+                                                      Was this helpful?
+                                                    </button>
+                                                  )}
+                                                  {feedbackGiven.has(`trade-${i}`) && (
+                                                    <span className="text-[11px] text-muted-foreground">Thanks for your feedback</span>
+                                                  )}
+                                                  {/* Feedback popover */}
+                                                  {feedbackPopoverIndex === `trade-${i}` && (
+                                                    <div className="absolute left-0 top-full mt-1.5 z-50 bg-card border border-border rounded-lg shadow-lg p-3 w-64">
+                                                      <p className="text-xs font-semibold text-foreground mb-2">Help us review your bid more accurately</p>
+                                                      {[
+                                                        "This was helpful",
+                                                        "This wasn\u2019t important for this job",
+                                                        "This is never important",
+                                                      ].map((option) => (
+                                                        <button
+                                                          key={option}
+                                                          onClick={() => {
+                                                            setFeedbackGiven((prev) => new Set(prev).add(`trade-${i}`));
+                                                            setFeedbackPopoverIndex(null);
+                                                          }}
+                                                          className="w-full text-left text-xs text-foreground px-2.5 py-2 rounded-md hover:bg-muted transition-colors"
+                                                        >
+                                                          {option}
+                                                        </button>
+                                                      ))}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </div>
+                                            {/* Trade amount */}
+                                            <span className="text-sm font-semibold text-foreground shrink-0">{trade.amount}</span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                    {/* Show readiness items not matched to a trade */}
+                                    {hasReadiness && readinessCheck!.items.filter((rc) => !tradeBreakdown.some(
+                                      (t) => rc.trade.toLowerCase().includes(t.trade.toLowerCase().split(" ")[0]) ||
+                                             t.trade.toLowerCase().includes(rc.trade.toLowerCase().split(" ")[0])
+                                    )).map((item, i) => {
+                                      const globalIndex = readinessCheck!.items.indexOf(item);
+                                      const isOverridden = readinessOverrides.has(globalIndex);
+                                      const effectiveStatus = isOverridden ? "aligned" : item.status;
+                                      return (
+                                        <div key={`unmatched-${i}`} className="rounded-lg border border-border bg-card px-3.5 py-3">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-sm font-semibold text-foreground">{item.trade}</span>
+                                            <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                                              effectiveStatus === "aligned" ? "bg-emerald-100 text-emerald-700" :
+                                              effectiveStatus === "misaligned" ? "bg-red-100 text-red-700" :
+                                              "bg-amber-100 text-amber-700"
+                                            }`}>
+                                              {effectiveStatus === "aligned" ? "Aligned" : effectiveStatus === "misaligned" ? "Misaligned" : "Missing"}
+                                            </span>
+                                            {isOverridden && <span className="text-[10px] text-muted-foreground italic">manually resolved</span>}
+                                          </div>
+                                          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                                            {item.detail}
+                                            {!isOverridden && item.fix && (
+                                              <button
+                                                onClick={() => onOpenAskAi?.(`For the "${item.trade}" trade on this bid: ${item.detail}\n\nHow to fix: ${item.fix}\n\nPlease explain this in more detail and suggest specific steps.`)}
+                                                className="ml-1.5 text-xs font-medium text-primary hover:underline inline"
+                                              >
+                                                More Info
+                                              </button>
+                                            )}
+                                          </p>
+                                          {item.status !== "aligned" && (
+                                            <div className="mt-1.5 flex items-center gap-2 relative">
+                                              <button
+                                                onClick={() => {
+                                                  setReadinessOverrides((prev) => {
+                                                    const next = new Set(prev);
+                                                    if (next.has(globalIndex)) next.delete(globalIndex);
+                                                    else next.add(globalIndex);
+                                                    return next;
+                                                  });
+                                                }}
+                                                className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md border shadow-sm transition-colors ${
+                                                  isOverridden
+                                                    ? "border-border bg-white text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                                                    : "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
+                                                }`}
+                                              >
+                                                {isOverridden ? <><X className="h-3 w-3" /> Undo</> : <><CheckCircle2 className="h-3 w-3" /> Looks Good</>}
+                                              </button>
+                                              <button
+                                                onClick={() => onOpenSource?.(item.trade, item.detail)}
+                                                className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md border border-border bg-white text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
+                                              >
+                                                <FileText className="h-3 w-3" /> Source
+                                              </button>
+                                              {isOverridden && !feedbackGiven.has(`unmatched-${i}`) && (
+                                                <button
+                                                  onClick={() => setFeedbackPopoverIndex(feedbackPopoverIndex === `unmatched-${i}` ? null : `unmatched-${i}`)}
+                                                  className="text-[11px] font-medium text-primary hover:underline"
+                                                >
+                                                  Was this helpful?
+                                                </button>
+                                              )}
+                                              {feedbackGiven.has(`unmatched-${i}`) && (
+                                                <span className="text-[11px] text-muted-foreground">Thanks for your feedback</span>
+                                              )}
+                                              {feedbackPopoverIndex === `unmatched-${i}` && (
+                                                <div className="absolute left-0 top-full mt-1.5 z-50 bg-card border border-border rounded-lg shadow-lg p-3 w-64">
+                                                  <p className="text-xs font-semibold text-foreground mb-2">Help us review your bid more accurately</p>
+                                                  {[
+                                                    "This was helpful",
+                                                    "This wasn\u2019t important for this job",
+                                                    "This is never important",
+                                                  ].map((option) => (
+                                                    <button
+                                                      key={option}
+                                                      onClick={() => {
+                                                        setFeedbackGiven((prev) => new Set(prev).add(`unmatched-${i}`));
+                                                        setFeedbackPopoverIndex(null);
+                                                      }}
+                                                      className="w-full text-left text-xs text-foreground px-2.5 py-2 rounded-md hover:bg-muted transition-colors"
+                                                    >
+                                                      {option}
+                                                    </button>
+                                                  ))}
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+
+                        {/* Attached Files row */}
+                        <div className="border-t border-border px-4 h-10 flex items-center gap-2">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">Attached Files:</span>
+                          <div className="flex-1 flex flex-wrap items-center gap-2">
+                            {isLoading ? (
+                              <Skeleton className="h-7 w-36 rounded-full" />
+                            ) : (
+                              <>
+                                {files.map((f) => (
+                                  <div
+                                    key={f.id}
+                                    className="group relative flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted text-sm transition-colors hover:bg-destructive-surface hover:pr-8"
+                                  >
+                                    <Paperclip className="h-3 w-3 text-muted-foreground group-hover:text-destructive-text shrink-0" />
+                                    <span className="truncate max-w-[150px] text-foreground group-hover:text-destructive-text">{f.name}</span>
+                                    <button
+                                      onClick={() => setFiles(files.filter((file) => file.id !== f.id))}
+                                      className="absolute right-2 hidden group-hover:flex items-center justify-center text-destructive-text hover:text-destructive"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                ))}
+                                <button
+                                  onClick={() => fileInputRef.current?.click()}
+                                  className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                  Add
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Special Instructions row — only when unmet */}
+                        {!isLoading && analysisResult && analysisResult.checklist.some((c) => c.status !== "found") && (
+                          <div className="border-t border-border">
+                            <button
+                              onClick={() => setRequirementsExpanded(!requirementsExpanded)}
+                              className="w-full px-4 h-10 flex items-center gap-2"
+                            >
+                              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">Special Instructions:</span>
+                              {(() => {
+                                const allMet = analysisResult.checklist.every((c) => c.status === "found");
+                                return allMet ? (
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-success-foreground" />
+                                ) : (
+                                  <Badge variant="warning" className="gap-1 text-[10px]">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    {analysisResult.checklist.filter((c) => c.status !== "found").length} action needed
+                                  </Badge>
+                                );
+                              })()}
+                              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ml-auto ${requirementsExpanded ? "rotate-180" : ""}`} />
+                            </button>
+
+                            <AnimatePresence>
+                              {requirementsExpanded && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: "auto", opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.2 }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="px-4 pb-3 space-y-2">
+                                    <p className="text-xs text-muted-foreground">
+                                      AI verified your documents against {gcName}&apos;s requirements
+                                    </p>
+                                    {analysisResult.checklist.map((item) => {
+                                      const config = statusConfig[item.status];
+                                      const Icon = config.icon;
+                                      const help = requirementHelp[item.id];
+                                      const isUnmet = item.status === "needs-action" || item.status === "missing";
+                                      const isHelpOpen = helpExpandedId === item.id;
+                                      return (
+                                        <div key={item.id}>
+                                          <div className="flex items-start gap-3 p-3 rounded-[8px] bg-muted">
+                                            <Icon className={`h-5 w-5 shrink-0 mt-0.5 ${config.color}`} />
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-sm font-medium text-foreground">{item.label}</span>
+                                                <Badge variant={config.badgeVariant}>{config.label}</Badge>
+                                              </div>
+                                              <p className="text-xs text-muted-foreground mt-0.5">{item.detail}</p>
+                                            </div>
+                                            {isUnmet && help && (
+                                              <button
+                                                onClick={() => setHelpExpandedId(isHelpOpen ? null : item.id)}
+                                                className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                                                  isHelpOpen ? "bg-warning-surface text-warning-foreground" : "bg-warning-surface/60 text-warning-foreground hover:bg-warning-surface"
+                                                }`}
+                                              >
+                                                <Lightbulb className="h-3 w-3" />
+                                                Help
+                                              </button>
+                                            )}
+                                          </div>
+                                          {isHelpOpen && help && (
+                                            <div className="mt-1 ml-8 rounded-[8px] border border-warning-border bg-warning-surface/30 p-4">
+                                              <div className="flex items-center gap-2 mb-3">
+                                                <Lightbulb className="h-4 w-4 text-warning-foreground" />
+                                                <span className="text-sm font-semibold text-foreground">{help.title}</span>
+                                              </div>
+                                              <div className="space-y-2.5">
+                                                {help.steps.map((s, si) => (
+                                                  <div key={si} className="flex items-start gap-2.5">
+                                                    <span className="h-5 w-5 rounded-full bg-warning-surface flex items-center justify-center shrink-0 text-[11px] font-bold text-warning-foreground">{si + 1}</span>
+                                                    <span className="text-sm text-foreground leading-snug">{s}</span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                              <div className="mt-3 rounded-md bg-warning-surface/60 p-2.5 flex items-start gap-2">
+                                                <ArrowRight className="h-3.5 w-3.5 text-warning-foreground shrink-0 mt-0.5" />
+                                                <p className="text-xs text-muted-foreground leading-relaxed">{help.tip}</p>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    );
+                  })();
+
+
+                  const hasDocumentsSectionContent = isLoading || (getFlag("bid-readiness-check-plus") && readinessCheck !== null) || isImprovingBid || bidScore !== null;
+                  const documentsSection = hasDocumentsSectionContent ? (
                   /* Documents & Requirements — combined section */
                   <div className="rounded-[8px] border border-border">
                   {isLoading ? (
@@ -1129,167 +1560,8 @@ export function BidSubmissionModal({
                   ) : (
                   <>
 
-                    {/* ===== Bid Readiness Check (feature-flagged) ===== */}
-                    {(isReadinessChecking || readinessCheck !== null) && (
-                      <div className="border-b border-border">
-                        {isReadinessChecking ? (
-                          <div className="px-4 py-4 bg-purple-50/30 space-y-3">
-                            <div className="flex items-center gap-3">
-                              <div className="h-10 w-10 rounded-lg bg-purple-200 animate-pulse shrink-0" />
-                              <div className="flex-1 space-y-2">
-                                <div className="h-4 rounded bg-purple-200 animate-pulse w-44" />
-                                <div className="h-3 rounded bg-purple-100 animate-pulse w-56" />
-                              </div>
-                              <div className="h-7 w-28 rounded-full bg-purple-100 animate-pulse shrink-0" />
-                            </div>
-                            <div className="space-y-2">
-                              <div className="h-10 rounded-lg bg-purple-100 animate-pulse" />
-                              <div className="h-10 rounded-lg bg-purple-100 animate-pulse" />
-                              <div className="h-10 rounded-lg bg-purple-100 animate-pulse" />
-                            </div>
-                          </div>
-                        ) : readinessCheck !== null ? (
-                          <div className="bg-purple-50/30">
-                            {/* Header row — recompute status based on overrides */}
-                            {(() => {
-                              const hasUnresolved = readinessCheck.items.some(
-                                (item, i) => !readinessOverrides.has(i) && (item.status === "misaligned" || item.status === "missing")
-                              );
-                              const effectiveResult = hasUnresolved ? "needs-review" : "looks-good";
-                              return (
-                                <div className="px-4 py-3">
-                                  <div className="flex items-center justify-between">
-                                    <h3 className="text-lg font-bold text-foreground">Bid Readiness Check</h3>
-                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                                      effectiveResult === "looks-good"
-                                        ? "bg-emerald-100 text-emerald-700"
-                                        : "bg-red-100 text-red-700"
-                                    }`}>
-                                      {effectiveResult === "looks-good" ? (
-                                        <><CheckCircle2 className="h-3.5 w-3.5" /> Looks Good</>
-                                      ) : (
-                                        <><ShieldAlert className="h-3.5 w-3.5" /> Needs Review</>
-                                      )}
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            })()}
-
-                            {/* Accordion: scope check breakdown */}
-                            <div className="px-4 pb-1">
-                              <button
-                                onClick={() => setReadinessExpanded(!readinessExpanded)}
-                                className="w-full flex items-center justify-between py-2"
-                              >
-                                <span className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                                  Scope Alignment ({readinessCheck.items.length} trade{readinessCheck.items.length !== 1 ? "s" : ""} checked)
-                                </span>
-                                <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${readinessExpanded ? "rotate-180" : ""}`} />
-                              </button>
-                            </div>
-
-                            <AnimatePresence>
-                              {readinessExpanded && (
-                                <motion.div
-                                  initial={{ height: 0, opacity: 0 }}
-                                  animate={{ height: "auto", opacity: 1 }}
-                                  exit={{ height: 0, opacity: 0 }}
-                                  transition={{ duration: 0.2 }}
-                                  className="overflow-hidden"
-                                >
-                                  <div className="px-4 pb-3 space-y-2">
-                                    {readinessCheck.items.map((item, i) => {
-                                      const isOverridden = readinessOverrides.has(i);
-                                      const effectiveStatus = isOverridden ? "aligned" : item.status;
-                                      return (
-                                      <div
-                                        key={i}
-                                        className="rounded-lg border border-border bg-card px-3.5 py-3 transition-colors"
-                                      >
-                                        <div className="flex items-start gap-2.5">
-                                          <span className="shrink-0 mt-0.5">
-                                            {effectiveStatus === "aligned" ? (
-                                              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                                            ) : effectiveStatus === "misaligned" ? (
-                                              <XCircle className="h-4 w-4 text-red-600" />
-                                            ) : (
-                                              <AlertTriangle className="h-4 w-4 text-amber-600" />
-                                            )}
-                                          </span>
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                              <span className="text-sm font-semibold text-foreground">{item.trade}</span>
-                                              <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded transition-colors ${
-                                                effectiveStatus === "aligned"
-                                                  ? "bg-emerald-100 text-emerald-700"
-                                                  : effectiveStatus === "misaligned"
-                                                  ? "bg-red-100 text-red-700"
-                                                  : "bg-amber-100 text-amber-700"
-                                              }`}>
-                                                {effectiveStatus === "aligned" ? "Aligned" : effectiveStatus === "misaligned" ? "Misaligned" : "Missing"}
-                                              </span>
-                                              {isOverridden && (
-                                                <span className="text-[10px] text-muted-foreground italic">manually resolved</span>
-                                              )}
-                                            </div>
-                                            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{item.detail}</p>
-                                            {!isOverridden && item.fix && (
-                                              <div className="mt-2 rounded-md bg-muted/60 border border-border px-3 py-2.5">
-                                                <div className="flex items-center gap-1.5 mb-1">
-                                                  <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
-                                                  <span className="text-xs font-semibold text-foreground">How to fix</span>
-                                                </div>
-                                                <p className="text-xs text-muted-foreground leading-relaxed">{item.fix}</p>
-                                              </div>
-                                            )}
-                                            {/* Mark as Aligned / Undo + Source */}
-                                            {item.status !== "aligned" && (
-                                              <div className="mt-2 flex items-center gap-2">
-                                                <button
-                                                  onClick={() => {
-                                                    setReadinessOverrides((prev) => {
-                                                      const next = new Set(prev);
-                                                      if (next.has(i)) {
-                                                        next.delete(i);
-                                                      } else {
-                                                        next.add(i);
-                                                      }
-                                                      return next;
-                                                    });
-                                                  }}
-                                                  className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md border shadow-sm transition-colors ${
-                                                    isOverridden
-                                                      ? "border-border bg-white text-muted-foreground hover:bg-red-50 hover:text-red-600 hover:border-red-200"
-                                                      : "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
-                                                  }`}
-                                                >
-                                                  {isOverridden ? (
-                                                    <><X className="h-3 w-3" /> Undo</>
-                                                  ) : (
-                                                    <><CheckCircle2 className="h-3 w-3" /> Mark as Aligned</>
-                                                  )}
-                                                </button>
-                                                <button
-                                                  onClick={() => onOpenSource?.(item.trade, item.detail)}
-                                                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-md border border-border bg-white text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
-                                                >
-                                                  <FileText className="h-3 w-3" /> Source
-                                                </button>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </div>
-                                      );
-                                    })}
-                                  </div>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-
-                            {/* Improve Your Proposal — collapsible section (only with "plus" flag) */}
-                            {getFlag("bid-readiness-check-plus") && (<>
+                    {/* Improve Your Proposal — collapsible section (only with "plus" flag) */}
+                    {getFlag("bid-readiness-check-plus") && readinessCheck !== null && (<>
                             <div className="px-4 pb-1">
                               <button
                                 onClick={() => setProposalSectionOpen(!proposalSectionOpen)}
@@ -1397,10 +1669,6 @@ export function BidSubmissionModal({
                               )}
                             </AnimatePresence>
                             </>)}
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
 
                     {/* ===== Bid Readiness Score (original — when flag is off) ===== */}
                     {(isImprovingBid || bidScore !== null) && (
@@ -1618,169 +1886,10 @@ export function BidSubmissionModal({
                       </div>
                     )}
 
-                    {/* Requirements badge — shown in attached files header when unmet */}
-                    {(() => {
-                      const allMet = analysisResult!.checklist.every((c) => c.status === "found");
-                      const unmetCount = analysisResult!.checklist.filter((c) => c.status !== "found").length;
-                      if (!allMet) {
-                        return (
-                          <div className="px-4 py-2 border-b border-border bg-amber-50/50">
-                            <Badge variant="warning" className="gap-1">
-                              <AlertTriangle className="h-3 w-3" />
-                              {unmetCount} requirement{unmetCount > 1 ? "s" : ""} need{unmetCount === 1 ? "s" : ""} action
-                            </Badge>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-
-                    {/* Attached files */}
-                    <div className="px-4 py-3 border-b border-border">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                          Attached Files
-                        </span>
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                        >
-                          <Upload className="h-3 w-3" />
-                          Add files
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {files.map((f) => (
-                          <div
-                            key={f.id}
-                            className="group relative flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted text-sm transition-colors hover:bg-destructive-surface hover:pr-8"
-                          >
-                            <Paperclip className="h-3 w-3 text-muted-foreground group-hover:text-destructive-text shrink-0" />
-                            <span className="truncate max-w-[150px] text-foreground group-hover:text-destructive-text">{f.name}</span>
-                            <button
-                              onClick={() => setFiles(files.filter((file) => file.id !== f.id))}
-                              className="absolute right-2 hidden group-hover:flex items-center justify-center text-destructive-text hover:text-destructive"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Requirements checklist */}
-                    <div className="px-4 py-3">
-                      {(() => {
-                        const allMet = analysisResult!.checklist.every((c) => c.status === "found");
-                        return (
-                          <>
-                            <button
-                              onClick={() => setRequirementsExpanded(!requirementsExpanded)}
-                              className="w-full flex items-center justify-between"
-                            >
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                                  Special Instructions
-                                </span>
-                                {allMet && (
-                                  <CheckCircle2 className="h-3.5 w-3.5 text-success-foreground" />
-                                )}
-                              </div>
-                              <ChevronDown
-                                className={`h-4 w-4 text-muted-foreground transition-transform ${
-                                  requirementsExpanded ? "rotate-180" : ""
-                                }`}
-                              />
-                            </button>
-
-                            {requirementsExpanded && (
-                              <div className="mt-3 space-y-2">
-                                <p className="text-xs text-muted-foreground">
-                                  AI verified your documents against {gcName}&apos;s requirements
-                                </p>
-                                {analysisResult!.checklist.map((item) => {
-                                  const config = statusConfig[item.status];
-                                  const Icon = config.icon;
-                                  const help = requirementHelp[item.id];
-                                  const isUnmet = item.status === "needs-action" || item.status === "missing";
-                                  const isHelpOpen = helpExpandedId === item.id;
-                                  return (
-                                    <div key={item.id}>
-                                      <div className="flex items-start gap-3 p-3 rounded-[8px] bg-muted">
-                                        <Icon
-                                          className={`h-5 w-5 shrink-0 mt-0.5 ${config.color}`}
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-sm font-medium text-foreground">
-                                              {item.label}
-                                            </span>
-                                            <Badge variant={config.badgeVariant}>
-                                              {config.label}
-                                            </Badge>
-                                          </div>
-                                          <p className="text-xs text-muted-foreground mt-0.5">
-                                            {item.detail}
-                                          </p>
-                                        </div>
-                                        {isUnmet && help && (
-                                          <button
-                                            onClick={() =>
-                                              setHelpExpandedId(isHelpOpen ? null : item.id)
-                                            }
-                                            className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                                              isHelpOpen
-                                                ? "bg-warning-surface text-warning-foreground"
-                                                : "bg-warning-surface/60 text-warning-foreground hover:bg-warning-surface"
-                                            }`}
-                                          >
-                                            <Lightbulb className="h-3 w-3" />
-                                            Help
-                                          </button>
-                                        )}
-                                      </div>
-                                      {/* Expandable help guidance */}
-                                      {isHelpOpen && help && (
-                                        <div className="mt-1 ml-8 rounded-[8px] border border-warning-border bg-warning-surface/30 p-4">
-                                          <div className="flex items-center gap-2 mb-3">
-                                            <Lightbulb className="h-4 w-4 text-warning-foreground" />
-                                            <span className="text-sm font-semibold text-foreground">
-                                              {help.title}
-                                            </span>
-                                          </div>
-                                          <div className="space-y-2.5">
-                                            {help.steps.map((s, i) => (
-                                              <div key={i} className="flex items-start gap-2.5">
-                                                <span className="h-5 w-5 rounded-full bg-warning-surface flex items-center justify-center shrink-0 text-[11px] font-bold text-warning-foreground">
-                                                  {i + 1}
-                                                </span>
-                                                <span className="text-sm text-foreground leading-snug">
-                                                  {s}
-                                                </span>
-                                              </div>
-                                            ))}
-                                          </div>
-                                          <div className="mt-3 rounded-md bg-warning-surface/60 p-2.5 flex items-start gap-2">
-                                            <ArrowRight className="h-3.5 w-3.5 text-warning-foreground shrink-0 mt-0.5" />
-                                            <p className="text-xs text-muted-foreground leading-relaxed">
-                                              {help.tip}
-                                            </p>
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
                   </>
                   )}
                   </div>
-                  );
+                  ) : null;
 
                   const tradeBreakdownSection = (
                   <>
@@ -1933,10 +2042,9 @@ export function BidSubmissionModal({
 
                   return (
                     <div className="space-y-5">
+                      {bidReadinessSection}
                       {emailComposerSection}
-                      {bidAmountSection}
                       {documentsSection}
-                      {tradeBreakdownSection}
                       {separatorAndShareSection}
                     </div>
                   );

@@ -13,6 +13,8 @@ interface AskAiPanelProps {
   onClose: () => void;
   projectId: string;
   projectContext?: string;
+  initialMessage?: string | null;
+  onInitialMessageConsumed?: () => void;
 }
 
 const SUGGESTED_PROMPTS = [
@@ -23,7 +25,7 @@ const SUGGESTED_PROMPTS = [
   "What special instructions or compliance requirements exist?",
 ];
 
-export function AskAiPanel({ open, onClose, projectId, projectContext }: AskAiPanelProps) {
+export function AskAiPanel({ open, onClose, projectId, projectContext, initialMessage, onInitialMessageConsumed }: AskAiPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -41,6 +43,15 @@ export function AskAiPanel({ open, onClose, projectId, projectContext }: AskAiPa
       setTimeout(() => inputRef.current?.focus(), 300);
     }
   }, [open]);
+
+  // Auto-send initial message when provided
+  useEffect(() => {
+    if (open && initialMessage && messages.length === 0) {
+      sendMessage(initialMessage);
+      onInitialMessageConsumed?.();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialMessage]);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isLoading) return;

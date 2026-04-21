@@ -35,11 +35,13 @@ You have access to the following project context:
 ${context || "No project context available."}
 
 Guidelines:
-- Be concise but thorough. Use bullet points when listing multiple items.
-- When referencing specific requirements, cite the relevant specification section or drawing number if available.
-- If asked about trades, scope, or requirements not covered in the project context, say so clearly.
-- Provide actionable, practical advice that a subcontractor can use immediately.
-- Keep responses focused and under 300 words unless the user asks for more detail.`;
+- Be SHORT. 3–5 bullet points max. No numbered multi-paragraph essays.
+- Each bullet: 1–2 sentences. Direct, actionable, plain language.
+- Skip obvious steps like "review the drawings" or "communicate with the team" — the user already knows that.
+- Focus on what specifically to do or change in their bid.
+- If referencing specs or drawings, mention them briefly inline — don't dedicate a bullet to "go look at Drawing X."
+- If asked about something not in the project context, say so in one sentence.
+- Total response: under 100 words unless the user explicitly asks for more detail.`;
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       { role: "system", content: systemPrompt },
@@ -54,7 +56,7 @@ Guidelines:
       model: "gpt-4o",
       messages,
       temperature: 0.3,
-      max_tokens: 1024,
+      max_tokens: 400,
     });
 
     const reply = completion.choices[0]?.message?.content ?? "Sorry, I couldn't generate a response.";

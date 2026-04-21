@@ -79,6 +79,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [bidSubmitted, setBidSubmitted] = useState(false);
   const [askAiOpen, setAskAiOpen] = useState(false);
+  const [askAiInitialMessage, setAskAiInitialMessage] = useState<string | null>(null);
   const [openFileTabs, setOpenFileTabs] = useState<{ id: string; name: string; trade: string; detail: string }[]>([]);
   const fileTabCounter = useRef(0);
   const bidFooterRef = useRef<HTMLDivElement>(null);
@@ -217,6 +218,8 @@ export default function Home() {
           onClose={() => setAskAiOpen(false)}
           projectId={isDynamic ? dynamicProject.id : activeProject}
           projectContext={isDynamic ? dynamicProject.projectContext : undefined}
+          initialMessage={askAiInitialMessage}
+          onInitialMessageConsumed={() => setAskAiInitialMessage(null)}
         />
       ) : undefined}
       onNavClick={handleNavClick}
@@ -362,6 +365,10 @@ export default function Home() {
             mode="page"
             footerPortalRef={bidFooterRef}
             onOpenSource={handleOpenSource}
+            onOpenAskAi={(message) => {
+              setAskAiInitialMessage(message);
+              setAskAiOpen(true);
+            }}
             onSubmitComplete={() => {
               setBidSubmitted(true);
               setActiveTab("track-bid");
@@ -607,17 +614,7 @@ export default function Home() {
           </div>
         </div>
       ) : (
-        <div className="p-6 bg-[var(--bg-surface,#F5F7F9)]">
-          <div className="bg-card border border-border rounded-lg p-12 text-center">
-            <FileText className="h-12 w-12 text-muted-foreground mx-auto" />
-            <h2 className="mt-4 text-lg font-semibold text-foreground">
-              No files uploaded yet
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Project files will appear here once uploaded.
-            </p>
-          </div>
-        </div>
+        <div className="p-6 bg-[var(--bg-surface,#F5F7F9)] h-full" />
       )}
 
       <BidSubmissionModal
@@ -628,6 +625,10 @@ export default function Home() {
         gcEmail={isDynamic ? "bids@contractor.com" : currentGcList[0].email}
         projectId={isDynamic ? dynamicProject.id : activeProject}
         projectContext={isDynamic ? dynamicProject.projectContext : undefined}
+        onOpenAskAi={(message) => {
+          setAskAiInitialMessage(message);
+          setAskAiOpen(true);
+        }}
       />
 
       </>
