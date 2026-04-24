@@ -1135,7 +1135,7 @@ export function BidSubmissionModal({
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
                             effectiveResult === "looks-good" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
                           }`}>
-                            {effectiveResult === "looks-good" ? <><CheckCircle2 className="h-3.5 w-3.5" /> Looks Good</> : <><ShieldAlert className="h-3.5 w-3.5" /> Needs Review</>}
+                            {effectiveResult === "looks-good" ? <><CheckCircle2 className="h-3.5 w-3.5" /> Aligned</> : <><ShieldAlert className="h-3.5 w-3.5" /> Needs Review</>}
                           </span>
                         ) : null}
                       </div>
