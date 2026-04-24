@@ -1173,11 +1173,10 @@ export function BidSubmissionModal({
                           <AnimatePresence>
                             {tradeBreakdownExpanded && (
                               <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: "auto", opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
+                                initial={{ height: 0, opacity: 0, overflow: "hidden" }}
+                                animate={{ height: "auto", opacity: 1, transitionEnd: { overflow: "visible" } }}
+                                exit={{ height: 0, opacity: 0, overflow: "hidden" }}
                                 transition={{ duration: 0.2 }}
-                                className="overflow-hidden"
                               >
                                 {isLoading || isReadinessChecking ? (
                                   <div className="px-4 pb-3 space-y-2">
