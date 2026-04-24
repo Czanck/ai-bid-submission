@@ -1141,7 +1141,7 @@ export function BidSubmissionModal({
                       </div>
 
                       {/* Card */}
-                      <div className="rounded-[8px] border border-border overflow-hidden">
+                      <div className="rounded-[8px] border border-border">
                         {/* Amount row */}
                         <div className="px-4 h-10 flex items-center gap-2">
                           <Label htmlFor="bidAmount" className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">Total:</Label>
@@ -1268,7 +1268,7 @@ export function BidSubmissionModal({
                                                   )}
                                                   {/* Feedback popover */}
                                                   {feedbackPopoverIndex === `trade-${i}` && (
-                                                    <div className="absolute left-0 top-full mt-1.5 z-50 bg-card border border-border rounded-lg shadow-lg p-3 w-64">
+                                                    <div className="absolute left-0 bottom-full mb-1.5 z-50 bg-card border border-border rounded-lg shadow-lg p-3 w-64">
                                                       <p className="text-xs font-semibold text-foreground mb-2">Help us review your bid more accurately</p>
                                                       {[
                                                         "This was helpful",
@@ -1366,7 +1366,7 @@ export function BidSubmissionModal({
                                                 <span className="text-[11px] text-muted-foreground">Thanks for your feedback</span>
                                               )}
                                               {feedbackPopoverIndex === `unmatched-${i}` && (
-                                                <div className="absolute left-0 top-full mt-1.5 z-50 bg-card border border-border rounded-lg shadow-lg p-3 w-64">
+                                                <div className="absolute left-0 bottom-full mb-1.5 z-50 bg-card border border-border rounded-lg shadow-lg p-3 w-64">
                                                   <p className="text-xs font-semibold text-foreground mb-2">Help us review your bid more accurately</p>
                                                   {[
                                                     "This was helpful",
