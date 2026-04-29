@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { project1Context, project2Context } from "@/data/project-context";
+import { fetchProjectContext } from "@/lib/doc-intel";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -37,11 +37,6 @@ function buildImageContent(
   };
 }
 
-const projectContextMap: Record<string, string> = {
-  project1: project1Context,
-  project2: project2Context,
-};
-
 export async function POST(request: Request) {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -55,9 +50,12 @@ export async function POST(request: Request) {
     const openai = new OpenAI({ apiKey });
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
-    const projectId = (formData.get("projectId") as string) || "project1";
-    const customContext = formData.get("projectContext") as string | null;
-    const context = customContext || (projectContextMap[projectId] ?? projectContextMap.project1);
+    const projectId = (formData.get("projectId") as string) || "";
+    // Use client-provided context (from PlanIQ) if available; otherwise fetch from doc-intel
+    const clientContext = formData.get("projectContext") as string | null;
+    const contextPromise = clientContext
+      ? Promise.resolve(clientContext)
+      : fetchProjectContext(projectId);
     const followUp = (formData.get("followUp") as string) || "";
     const previousContext = (formData.get("context") as string) || "";
 
@@ -107,6 +105,9 @@ export async function POST(request: Request) {
       documentText = documentText.substring(0, maxTextLength) + "\n[...truncated]";
     }
 
+    // Await context now — file processing has been running in parallel
+    const context = await contextPromise;
+
     // --- Follow-up mode: simple Q&A ---
     if (followUp) {
       const followUpSystem = `You are a seasoned electrical subcontractor with 20+ years of experience reviewing and submitting bids. You speak plainly, directly, and from hard-won experience. Return only valid JSON, no other text.`;
@@ -148,6 +149,8 @@ Answer this question directly and specifically about their bid. Be concise — 1
     }
 
     // --- Bid Readiness Score mode ---
+    const isUnreadable = documentText.includes("[Scanned PDF - no extractable text]") && !imageContents.length;
+
     const systemPrompt = `You are a seasoned electrical subcontractor with 20+ years of experience reviewing bid submissions before they go out the door. You are direct, careful, and construction-aware. You never overstate confidence. You never claim to do takeoff or verify quantities. You focus on what a sub can actually check before hitting send: did they cover the scope, is the proposal clear, does anything contradict, and will the GC understand what they're getting.
 
 Return only valid JSON matching the exact schema requested. No other text.`;
@@ -158,7 +161,14 @@ Bid document:
 ${documentText || "[No text content — analyze the attached images]"}
 
 You are doing a final QA check on this bid package before the subcontractor submits. Score the bid's READINESS (not quality, not price, not likelihood to win).
-
+${isUnreadable ? `
+CRITICAL: The bid document is a scanned image — no text was extracted. This means you CANNOT evaluate the proposal content. Follow these rules strictly:
+- Score each dimension 50 (neutral — cannot evaluate) UNLESS you have actual evidence from the project context or other readable documents to score higher or lower.
+- Each dimension gets AT MOST ONE finding about unreadability. Do not repeat the same point multiple times across findings.
+- Focus findings on what you CAN evaluate from the project context (specs, GC notes, requirements) — not on the absence of proposal text.
+- The summary must say something like "Scanned PDF — upload text-based version to evaluate" NOT "X likely gaps". Unreadability is not a gap.
+- Prompt chips must focus on resolving the readability problem first, then on substantive questions about the project.
+` : ""}
 Evaluate these 4 dimensions, each scored 0–100:
 
 1. **Coverage** — Are the key requirements from the project likely addressed? Are addenda acknowledged? Are there obvious scope categories that seem missing given the project type and trades?

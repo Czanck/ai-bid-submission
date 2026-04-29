@@ -5,7 +5,7 @@ import {
   specialInstructions,
   specialInstructions2,
 } from "@/lib/special-instructions";
-import { project1Context, project2Context } from "@/data/project-context";
+import { fetchProjectContext } from "@/lib/doc-intel";
 import type { AnalyzeBidResponse, RequirementCheck } from "@/lib/types";
 
 // Increase body size limit for file uploads (Next.js App Router)
@@ -66,9 +66,12 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
     const projectId = (formData.get("projectId") as string) || "project1";
-    const customContext = formData.get("projectContext") as string | null;
     const activeInstructions = projectId === "project2" ? specialInstructions2 : specialInstructions;
-    const projectContextText = customContext || (projectId === "project2" ? project2Context : project1Context);
+    // Use client-provided context (from PlanIQ) if available; otherwise fetch from doc-intel
+    const clientContext = formData.get("projectContext") as string | null;
+    const contextPromise = clientContext
+      ? Promise.resolve(clientContext)
+      : fetchProjectContext(projectId);
 
     if (!files || files.length === 0) {
       return NextResponse.json(
@@ -133,6 +136,52 @@ export async function POST(request: Request) {
     if (documentText.length > maxTextLength) {
       documentText = documentText.substring(0, maxTextLength) + "\n[...truncated]";
     }
+
+    const fast = (formData.get("fast") as string) === "true";
+
+    if (fast) {
+      // Skip doc-intel — just extract bid amount and draft message from the document
+      const fastSystem = `You are a construction bid extractor. Extract data from bid documents. Return only valid JSON.`;
+      const fastUser = `Document:
+${documentText || "[No text — analyze attached images]"}
+
+Return JSON:
+{
+  "extractedData": { "companyName": "string", "bidAmount": "string (format: '$1,234,567' or '' if not found)" },
+  "messageTemplate": "2-3 sentence professional email body for submitting this bid. Mention company name, bid amount, and trade scope.",
+  "confidence": 0.8
+}`;
+      const fastResp = await openai.chat.completions.create({
+        model: "gpt-4o",
+        temperature: 0.1,
+        max_tokens: 512,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: fastSystem },
+          { role: "user", content: [{ type: "text", text: fastUser }, ...imageContents] as OpenAI.Chat.Completions.ChatCompletionContentPart[] },
+        ],
+      });
+      const fastText = fastResp.choices[0]?.message?.content;
+      if (!fastText) return NextResponse.json({ error: "No response from AI" }, { status: 502 });
+      const fp = JSON.parse(fastText) as { extractedData?: { companyName?: string; bidAmount?: string }; messageTemplate?: string; confidence?: number };
+      return NextResponse.json({
+        extractedData: {
+          companyName: fp.extractedData?.companyName || "",
+          bidAmount: fp.extractedData?.bidAmount || "",
+          tradeBreakdown: [],
+          certifications: { mbe: false, wbe: false, other: [] },
+          bondInfo: { hasBidBond: false, bondingCapacity: "", bondCompany: "" },
+          insuranceInfo: { hasGeneralLiability: false, coverageAmount: "", certificateProvided: false },
+          contactInfo: { name: "", email: "", phone: "" },
+        },
+        checklist: [],
+        messageTemplate: fp.messageTemplate || "",
+        confidence: fp.confidence ?? 0.5,
+      } as AnalyzeBidResponse);
+    }
+
+    // Await context now — file processing has been running in parallel
+    const projectContextText = await contextPromise;
 
     const systemPrompt = `You are a construction bid document analyzer. You extract structured data from bid submissions and evaluate compliance against real project requirements and special instructions.
 

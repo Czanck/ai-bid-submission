@@ -17,8 +17,9 @@ import {
   Activity,
   Users,
   Plus,
+  LogOut,
 } from "lucide-react";
-import { dummyUser, navItems } from "@/data/dummy-project";
+import { navItems } from "@/data/dummy-project";
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   LayoutDashboard,
@@ -68,6 +69,9 @@ export function PlanHubShell({
   onNavClick,
   activeProject,
   activeView,
+  user,
+  onLogout,
+  projectNavItems,
 }: {
   children: React.ReactNode;
   footer?: React.ReactNode;
@@ -75,6 +79,9 @@ export function PlanHubShell({
   onNavClick?: (navId: string) => void;
   activeProject?: string;
   activeView?: string;
+  user?: { name: string; initials: string; company?: string };
+  onLogout?: () => void;
+  projectNavItems?: { id: string; label: string }[];
 }) {
   const [flagsOpen, setFlagsOpen] = useState(false);
 
@@ -112,7 +119,7 @@ export function PlanHubShell({
               key={item.label}
               item={{
                 ...item,
-                active: item.navId ? item.navId === activeProject || item.navId === activeView : (item as { active?: boolean }).active,
+                active: (item as { active?: boolean }).active,
               }}
               onClick={onNavClick}
             />
@@ -125,13 +132,43 @@ export function PlanHubShell({
             Workspace
           </span>
         </div>
-        <nav className="px-2 space-y-0.5 flex-1">
-          {navItems.workspace.map((item) => (
+        <nav className="px-2 space-y-0.5 flex-1 overflow-y-auto">
+          {/* Static top items (Network) */}
+          {navItems.workspaceTop.map((item) => (
+            <NavItem
+              key={item.label}
+              item={{ ...item, active: (item as { active?: boolean }).active }}
+              onClick={onNavClick}
+            />
+          ))}
+
+          {/* Dynamic project items */}
+          {projectNavItems?.map((p) => (
+            <a
+              key={p.id}
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                onNavClick?.(p.id);
+              }}
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                p.id === activeProject && activeView === "project"
+                  ? "bg-[#00B894] text-white"
+                  : "text-[var(--sidebar-accent-foreground)] hover:bg-[var(--sidebar-accent)] hover:text-white"
+              }`}
+            >
+              <FolderKanban className="h-[18px] w-[18px] shrink-0" />
+              <span className="truncate">{p.label}</span>
+            </a>
+          ))}
+
+          {/* Static bottom items (Bid Board, Takeoff, Job Board) */}
+          {navItems.workspaceBottom.map((item) => (
             <NavItem
               key={item.label}
               item={{
                 ...item,
-                active: item.navId ? item.navId === activeProject || item.navId === activeView : (item as { active?: boolean }).active,
+                active: item.navId ? item.navId === activeView : (item as { active?: boolean }).active,
               }}
               onClick={onNavClick}
             />
@@ -173,7 +210,7 @@ export function PlanHubShell({
               <Building2 className="h-3.5 w-3.5 text-[var(--sidebar-accent-foreground)]" />
             </div>
             <span className="text-xs text-[var(--sidebar-foreground)] truncate">
-              {dummyUser.company}
+              {user?.company ?? ""}
             </span>
           </div>
           <button
@@ -205,16 +242,25 @@ export function PlanHubShell({
             <span className="text-yellow-300 text-sm">🔥</span>
             Pricing
           </button>
-          <div className="flex items-center gap-2 ml-2 cursor-pointer">
+          <div className="flex items-center gap-2 ml-2">
             <div className="h-8 w-8 rounded-full bg-[#00B894] flex items-center justify-center">
               <span className="text-white text-xs font-medium">
-                {dummyUser.initials}
+                {user?.initials ?? ""}
               </span>
             </div>
             <span className="text-sm font-medium text-foreground">
-              {dummyUser.name}
+              {user?.name ?? ""}
             </span>
             <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                title="Sign out"
+                className="ml-1 flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         </header>
 
