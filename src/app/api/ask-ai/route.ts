@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { fetchProjectContext } from "@/lib/doc-intel";
+import { queryProjectContext } from "@/lib/doc-intel";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -10,19 +10,22 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" });
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { message, history, projectId, projectContext } = body as {
+    const { message, history, projectId, projectContext, authToken } = body as {
       message: string;
       history: { role: "user" | "assistant"; content: string }[];
       projectId?: string;
       projectContext?: string;
+      authToken?: string;
     };
 
     if (!message) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
-    // Resolve project context: prefer explicitly passed context, then fetch from doc-intel
-    const context = projectContext || (projectId ? await fetchProjectContext(projectId) : "");
+    // Query doc-intel with the user's actual message for relevant chunks, then append bid analysis context
+    const docIntelContext = projectId ? await queryProjectContext(projectId, message, authToken) : "";
+    console.log(`[ask-ai] projectId=${projectId} docIntelContext length=${docIntelContext.length} projectContext length=${projectContext?.length ?? 0}`);
+    const context = [docIntelContext, projectContext].filter(Boolean).join("\n\n---\n\n");
 
     const systemPrompt = `You are an expert AI construction bid advisor embedded in a bid management platform (PlanHub). You help subcontractors understand project requirements, improve their bids, identify risks, and answer questions about the project specifications.
 

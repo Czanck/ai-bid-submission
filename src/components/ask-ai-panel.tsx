@@ -13,6 +13,9 @@ interface AskAiPanelProps {
   sendChat: (message: string) => void;
   initialMessage?: string | null;
   onInitialMessageConsumed?: () => void;
+  contextTags?: string[];
+  /** Item-specific chips shown instead of generic prompts when panel opens from "More Info" */
+  contextChips?: string[];
 }
 
 const SUGGESTED_PROMPTS = [
@@ -32,6 +35,8 @@ export function AskAiPanel({
   sendChat,
   initialMessage,
   onInitialMessageConsumed,
+  contextTags,
+  contextChips,
 }: AskAiPanelProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -47,14 +52,14 @@ export function AskAiPanel({
     }
   }, [open]);
 
-  // Auto-send initial message when panel opens with one queued
+  // Auto-send initial message only when no contextChips are provided
   useEffect(() => {
-    if (open && initialMessage && messages.length === 0) {
+    if (open && initialMessage && messages.length === 0 && !contextChips?.length) {
       sendChat(initialMessage);
       onInitialMessageConsumed?.();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialMessage]);
+  }, [open, initialMessage, contextChips]);
 
   const handleSend = (text: string) => {
     if (!text.trim() || isStreaming) return;
@@ -80,6 +85,21 @@ export function AskAiPanel({
         </button>
       </div>
 
+      {/* Context tags */}
+      {contextTags && contextTags.length > 0 && (
+        <div className="px-4 py-1.5 border-b border-border bg-muted/30 flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] text-muted-foreground">Context:</span>
+          {contextTags.map((tag) => (
+            <span
+              key={tag}
+              className="text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full flex items-center gap-1"
+            >
+              ✓ {tag}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {messages.length === 0 ? (
@@ -90,11 +110,13 @@ export function AskAiPanel({
               </div>
               <p className="text-sm font-medium text-foreground">How can I help with your bid?</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Ask questions about the project specs, scope, or how to improve your bid.
+                {contextChips?.length
+                  ? "Select a question below or type your own."
+                  : "Ask questions about the project specs, scope, or how to improve your bid."}
               </p>
             </div>
             <div className="space-y-2">
-              {SUGGESTED_PROMPTS.map((prompt, i) => (
+              {(contextChips?.length ? contextChips : SUGGESTED_PROMPTS).map((prompt, i) => (
                 <button
                   key={i}
                   onClick={() => handleSend(prompt)}

@@ -15,7 +15,8 @@ import { getSession, clearSession, getInitials, getDisplayName } from "@/lib/aut
 import type { PlanhubSession } from "@/lib/auth";
 import { getLeadDetails, mapLeadToDisplay, mapLeadToGcList } from "@/lib/planhub-api";
 import type { ProjectDisplay, GcDisplay } from "@/lib/planhub-api";
-import { usePlanIQ } from "@/hooks/usePlanIQ";
+import type { AnalyzeBidResponse, BidReadinessScore, BidReadinessCheck } from "@/lib/types";
+import { useAskAi } from "@/hooks/useAskAi";
 import {
   Calendar,
   Sparkles,
@@ -47,6 +48,49 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatBidContext(ctx: {
+  analysisResult: AnalyzeBidResponse;
+  bidScore: BidReadinessScore | null;
+  readinessCheck: BidReadinessCheck | null;
+}): string {
+  const { analysisResult, bidScore, readinessCheck } = ctx;
+  const { extractedData, checklist } = analysisResult;
+
+  const tradeLines = extractedData.tradeBreakdown.length
+    ? extractedData.tradeBreakdown.map((t) => `  • ${t.trade}: ${t.amount}`).join("\n")
+    : "  (none extracted)";
+
+  const foundCount = checklist.filter((c) => c.status === "found").length;
+  const checklistLines = checklist
+    .map((c) => `  • ${c.label}: ${c.status.toUpperCase()}`)
+    .join("\n");
+
+  const readinessLines = readinessCheck
+    ? readinessCheck.items.map((i) => `  • ${i.trade}: ${i.status.toUpperCase()} — ${i.detail}`).join("\n")
+    : "  (not available)";
+
+  const scoreLines = bidScore
+    ? `${bidScore.score}/100 (${bidScore.status}) — ${bidScore.summary}`
+    : "(not available)";
+
+  return [
+    "[Bid Analysis Context — use this when answering all questions in this session]",
+    "",
+    `Company: ${extractedData.companyName || "unknown"} | Bid Amount: ${extractedData.bidAmount || "unknown"}`,
+    "",
+    "Trade Breakdown:",
+    tradeLines,
+    "",
+    `Checklist (${foundCount}/${checklist.length} met):`,
+    checklistLines,
+    "",
+    "Readiness Check (scope alignment):",
+    readinessLines,
+    "",
+    `Bid Score: ${scoreLines}`,
+  ].join("\n");
 }
 
 function SectionCard({
@@ -105,6 +149,12 @@ export default function Home() {
   const [bidSubmitted, setBidSubmitted] = useState(false);
   const [askAiOpen, setAskAiOpen] = useState(false);
   const [askAiInitialMessage, setAskAiInitialMessage] = useState<string | null>(null);
+  const [askAiContextChips, setAskAiContextChips] = useState<string[] | undefined>();
+  const [bidAnalysisContext, setBidAnalysisContext] = useState<{
+    analysisResult: AnalyzeBidResponse;
+    bidScore: BidReadinessScore | null;
+    readinessCheck: BidReadinessCheck | null;
+  } | null>(null);
   const [openFileTabs, setOpenFileTabs] = useState<{ id: string; name: string; trade: string; detail: string }[]>([]);
   const fileTabCounter = useRef(0);
   const bidFooterRef = useRef<HTMLDivElement>(null);
@@ -113,34 +163,15 @@ export default function Home() {
   const [activeProject, setActiveProject] = useState<string>(PLANHUB_PROJECT_IDS[0]);
   const [activeView, setActiveView] = useState<"project" | "bidboard">("bidboard");
 
-  const planiq = usePlanIQ();
+  const bidContextText = bidAnalysisContext ? formatBidContext(bidAnalysisContext) : undefined;
+  const askAi = useAskAi(activeProject, bidContextText, session?.auth_token ?? undefined);
 
-  // Connect when entering project view
+  // Reset chat when switching projects
   useEffect(() => {
-    if (activeView === "project") planiq.connect();
-  }, [activeView, planiq.connect]);
-
-  // Send context to PlanIQ whenever the connection is established or the active project changes.
-  // PlanIQ requires a context message before any chat message so it knows which project to query.
-  useEffect(() => {
-    if (!planiq.isConnected || activeView !== "project" || !session) return;
-    planiq.send({
-      type: "context",
-      current_project: activeProject,
-      current_project_name: activeProject,
-      current_view: "dashboard",
-      auth_token: session.auth_token,
-      user_id: session.userId,         // keep as number — server does int()
-      company_id: session.companyId,   // keep as-is (null is valid)
-      user_type: session.userType,
-      user_role: session.userRole,
-    });
-  }, [planiq.isConnected, activeProject, activeView, session]); // planiq.send is stable
-
-  // Auto-open Ask AI panel whenever PlanIQ starts streaming
-  useEffect(() => {
-    if (planiq.isStreaming && activeView === "project") setAskAiOpen(true);
-  }, [planiq.isStreaming, activeView]);
+    setBidAnalysisContext(null);
+    askAi.reset();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProject]);
 
 
   async function handleLogout() {
@@ -327,13 +358,18 @@ export default function Home() {
       rightPanel={activeView === "project" ? (
         <AskAiPanel
           open={askAiOpen}
-          onClose={() => setAskAiOpen(false)}
-          messages={planiq.messages}
-          isStreaming={planiq.isStreaming}
-          statusText={planiq.statusText}
-          sendChat={planiq.sendChat}
+          onClose={() => { setAskAiOpen(false); setAskAiContextChips(undefined); }}
+          messages={askAi.messages}
+          isStreaming={askAi.isLoading}
+          statusText={askAi.isLoading ? "Thinking…" : null}
+          sendChat={askAi.sendChat}
           initialMessage={askAiInitialMessage}
-          onInitialMessageConsumed={() => setAskAiInitialMessage(null)}
+          onInitialMessageConsumed={() => { setAskAiInitialMessage(null); setAskAiContextChips(undefined); }}
+          contextChips={askAiContextChips}
+          contextTags={[
+            "Project data",
+            ...(bidAnalysisContext ? ["Bid analysis"] : []),
+          ]}
         />
       ) : undefined}
       onNavClick={handleNavClick}
@@ -480,10 +516,12 @@ export default function Home() {
             mode="page"
             footerPortalRef={bidFooterRef}
             onOpenSource={handleOpenSource}
-            onOpenAskAi={(message) => {
+            onOpenAskAi={(message, chips) => {
               setAskAiInitialMessage(message);
+              setAskAiContextChips(chips);
               setAskAiOpen(true);
             }}
+            onAnalysisReady={(ctx) => setBidAnalysisContext(ctx)}
             onSubmitComplete={() => {
               setBidSubmitted(true);
               setActiveTab("track-bid");

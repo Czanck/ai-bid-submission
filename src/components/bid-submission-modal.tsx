@@ -68,8 +68,14 @@ interface BidSubmissionModalProps {
   footerPortalRef?: React.RefObject<HTMLDivElement | null>;
   /** Called when user clicks "Source" on a misaligned item */
   onOpenSource?: (trade: string, detail: string) => void;
-  /** Called to open Ask AI panel with pre-loaded context */
-  onOpenAskAi?: (message: string) => void;
+  /** Called to open Ask AI panel with pre-loaded context and optional contextual chips */
+  onOpenAskAi?: (message: string, contextChips?: string[]) => void;
+  /** Called when bid analysis results are ready, so the parent can prime the AI chat context */
+  onAnalysisReady?: (context: {
+    analysisResult: AnalyzeBidResponse;
+    bidScore: BidReadinessScore | null;
+    readinessCheck: BidReadinessCheck | null;
+  }) => void;
 }
 
 const statusConfig: Record<
@@ -132,6 +138,20 @@ function formatFileSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 }
 
+function buildContextChips(trade: string, status: "aligned" | "misaligned" | "missing"): string[] {
+  const isMissing = status === "missing";
+  return [
+    isMissing
+      ? `What should I include for ${trade} in my bid?`
+      : `What exactly is wrong with my ${trade} scope?`,
+    isMissing
+      ? `How critical is adding ${trade} for winning this bid?`
+      : `How does this ${trade} misalignment affect my bid?`,
+    `Help me write the ${trade} section`,
+    `What's the risk of submitting without fixing ${trade}?`,
+  ];
+}
+
 export function BidSubmissionModal({
   open,
   onOpenChange,
@@ -145,6 +165,7 @@ export function BidSubmissionModal({
   footerPortalRef,
   onOpenSource,
   onOpenAskAi,
+  onAnalysisReady,
 }: BidSubmissionModalProps) {
   const applyTemplate = useCallback(
     (tpl: string) => {
@@ -250,6 +271,14 @@ export function BidSubmissionModal({
     }, 3000);
     return () => clearInterval(interval);
   }, [bidScore, followUpPlaceholders.length]);
+
+  // Notify parent when full analysis context is available so it can prime the AI chat
+  useEffect(() => {
+    if (bidScore && readinessCheck && analysisResult) {
+      onAnalysisReady?.({ analysisResult, bidScore, readinessCheck });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bidScore, readinessCheck, analysisResult]);
 
   // Reset state when modal closes
   const handleOpenChange = useCallback(
@@ -1292,7 +1321,10 @@ export function BidSubmissionModal({
                                                   {readinessItem.detail}
                                                   {!isOverridden && readinessItem.fix && (
                                                     <button
-                                                      onClick={() => onOpenAskAi?.(`For the "${trade.trade}" trade on this bid: ${readinessItem.detail}\n\nHow to fix: ${readinessItem.fix}\n\nPlease explain this in more detail and suggest specific steps.`)}
+                                                      onClick={() => onOpenAskAi?.(
+                                                        `For the "${trade.trade}" trade on this bid: ${readinessItem.detail}\n\nHow to fix: ${readinessItem.fix}`,
+                                                        buildContextChips(trade.trade, effectiveStatus as "aligned" | "misaligned" | "missing")
+                                                      )}
                                                       className="ml-1.5 text-xs font-medium text-primary hover:underline inline"
                                                     >
                                                       More Info
@@ -1393,7 +1425,10 @@ export function BidSubmissionModal({
                                             {item.detail}
                                             {!isOverridden && item.fix && (
                                               <button
-                                                onClick={() => onOpenAskAi?.(`For the "${item.trade}" trade on this bid: ${item.detail}\n\nHow to fix: ${item.fix}\n\nPlease explain this in more detail and suggest specific steps.`)}
+                                                onClick={() => onOpenAskAi?.(
+                                                  `For the "${item.trade}" trade on this bid: ${item.detail}\n\nHow to fix: ${item.fix}`,
+                                                  buildContextChips(item.trade, effectiveStatus as "aligned" | "misaligned" | "missing")
+                                                )}
                                                 className="ml-1.5 text-xs font-medium text-primary hover:underline inline"
                                               >
                                                 More Info

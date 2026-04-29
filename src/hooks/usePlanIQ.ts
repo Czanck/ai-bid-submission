@@ -23,11 +23,14 @@ export function usePlanIQ() {
   const pendingResolveRef = useRef<((text: string) => void) | null>(null);
   // True when sendChatAndWait triggered the current generation (suppresses error UI)
   const isSystemCallRef = useRef(false);
+  // True when sendContextSilently is active — suppresses all message state updates
+  const isSilentCallRef = useRef(false);
 
   const resolvePending = (text: string) => {
     pendingResolveRef.current?.(text);
     pendingResolveRef.current = null;
     isSystemCallRef.current = false;
+    isSilentCallRef.current = false;
   };
 
   const send = useCallback((payload: object) => {
@@ -43,6 +46,25 @@ export function usePlanIQ() {
     setIsStreaming(true);
     setMessages((prev) => [...prev, { role: "user", content: message }]);
     wsRef.current.send(JSON.stringify({ type: "chat", message }));
+  }, []);
+
+  /**
+   * Sends a context-priming message silently: no user bubble, no assistant
+   * response shown in the chat panel. Used to load bid analysis data into
+   * PlanIQ's session context before the user starts chatting.
+   */
+  const sendContextSilently = useCallback((message: string): Promise<void> => {
+    return new Promise((resolve) => {
+      if (!message.trim() || wsRef.current?.readyState !== WebSocket.OPEN) {
+        resolve();
+        return;
+      }
+      pendingResolveRef.current = () => resolve();
+      isSilentCallRef.current = true;
+      isStreamingRef.current = false;
+      streamingRef.current = "";
+      wsRef.current!.send(JSON.stringify({ type: "chat", message }));
+    });
   }, []);
 
   /**
@@ -107,6 +129,7 @@ export function usePlanIQ() {
         }
 
         case "generate_token": {
+          if (isSilentCallRef.current) break;
           const token = msg.content as string;
           if (!isStreamingRef.current) {
             isStreamingRef.current = true;
@@ -137,7 +160,7 @@ export function usePlanIQ() {
 
         case "generate_result": {
           const content = (msg.result ?? msg.content ?? msg.message ?? "") as string;
-          if (content) {
+          if (!isSilentCallRef.current && content) {
             setMessages((prev) => [...prev, { role: "assistant", content }]);
           }
           const finalText = content || streamingRef.current;
@@ -212,5 +235,5 @@ export function usePlanIQ() {
     resolvePending("");
   }, []);
 
-  return { messages, isStreaming, statusText, isConnected, connect, send, sendChat, sendChatAndWait, disconnect };
+  return { messages, isStreaming, statusText, isConnected, connect, send, sendChat, sendChatAndWait, sendContextSilently, disconnect };
 }

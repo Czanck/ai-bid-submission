@@ -8,18 +8,62 @@ const DOC_INTEL_BASE_URL = "https://doc-intel-api.qa.planhub.com";
  * Response shape (from doc-intel API):
  *   { answer: string; sources: Array<{ text: string; score: number }> }
  */
-export async function fetchProjectContext(projectId: string): Promise<string> {
+/**
+ * Queries doc-intel with the user's message to get relevant project chunks for chat.
+ * Falls back to the generic context query if no custom query is provided.
+ */
+export async function queryProjectContext(projectId: string, query: string, authToken?: string): Promise<string> {
   if (!projectId) return "";
 
-  const query =
-    "What are the project specifications, scope of work, required trades, bidding requirements, certifications, insurance, and bonding requirements?";
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
 
   try {
     const response = await fetch(
       `${DOC_INTEL_BASE_URL}/projects/${encodeURIComponent(projectId)}/query`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
+        body: JSON.stringify({ query, top_k: 5 }),
+      },
+    );
+
+    if (!response.ok) {
+      console.warn(`[queryProjectContext] ${projectId} → HTTP ${response.status}`);
+      return "";
+    }
+
+    const data = await response.json() as {
+      answer?: string;
+      sources?: Array<{ text: string; score: number }>;
+    };
+
+    console.log(`[queryProjectContext] ${projectId} → sources: ${(data.sources ?? []).length}, answer: ${data.answer ? "yes" : "no"}`);
+
+    const chunks = (data.sources ?? []).map((s) => s.text).filter(Boolean);
+    if (chunks.length === 0 && data.answer) return data.answer;
+    return chunks.join("\n\n");
+  } catch (err) {
+    console.warn("[queryProjectContext] error:", err);
+    return "";
+  }
+}
+
+export async function fetchProjectContext(projectId: string, authToken?: string): Promise<string> {
+  if (!projectId) return "";
+
+  const query =
+    "What are the project specifications, scope of work, required trades, bidding requirements, certifications, insurance, and bonding requirements?";
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+
+  try {
+    const response = await fetch(
+      `${DOC_INTEL_BASE_URL}/projects/${encodeURIComponent(projectId)}/query`,
+      {
+        method: "POST",
+        headers,
         body: JSON.stringify({ query, top_k: 5 }),
       },
     );
@@ -33,6 +77,8 @@ export async function fetchProjectContext(projectId: string): Promise<string> {
       answer?: string;
       sources?: Array<{ text: string; score: number }>;
     };
+
+    console.log(`[fetchProjectContext] ${projectId} → sources: ${(data.sources ?? []).length}, answer: ${data.answer ? "yes" : "no"}`);
 
     const chunks = (data.sources ?? []).map((s) => s.text).filter(Boolean);
     if (chunks.length === 0 && data.answer) {
