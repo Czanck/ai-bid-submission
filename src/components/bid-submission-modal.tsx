@@ -1160,11 +1160,41 @@ export function BidSubmissionModal({
                   // Combined Bid Readiness section (amount + trade breakdown with readiness check)
                   const bidReadinessSection = (() => {
                     const hasReadiness = !isLoading && readinessCheck !== null;
-                    const hasUnresolved = hasReadiness ? readinessCheck!.items.some(
-                      (item, i) => !readinessOverrides.has(i) && (item.status === "misaligned" || item.status === "missing")
-                    ) : false;
-                    const effectiveResult = hasUnresolved ? "needs-review" : "looks-good";
                     const tradeBreakdown = analysisResult?.extractedData.tradeBreakdown ?? [];
+                    // Compute "visible" readiness items the user can actually act on:
+                    // one per matched trade (first match), plus any unmatched items.
+                    // This mirrors the rendering logic below so the pill reflects
+                    // what the user sees.
+                    const matchTradeToItem = (
+                      rc: { trade: string },
+                      t: { trade: string }
+                    ) =>
+                      rc.trade.toLowerCase().includes(t.trade.toLowerCase().split(" ")[0]) ||
+                      t.trade.toLowerCase().includes(rc.trade.toLowerCase().split(" ")[0]);
+                    const visibleItems: { item: { status: string }; index: number }[] = [];
+                    if (hasReadiness) {
+                      const seen = new Set<number>();
+                      for (const trade of tradeBreakdown) {
+                        const idx = readinessCheck!.items.findIndex((rc) => matchTradeToItem(rc, trade));
+                        if (idx !== -1 && !seen.has(idx)) {
+                          seen.add(idx);
+                          visibleItems.push({ item: readinessCheck!.items[idx], index: idx });
+                        }
+                      }
+                      readinessCheck!.items.forEach((item, idx) => {
+                        const matchesAnyTrade = tradeBreakdown.some((t) => matchTradeToItem(item, t));
+                        if (!matchesAnyTrade && !seen.has(idx)) {
+                          seen.add(idx);
+                          visibleItems.push({ item, index: idx });
+                        }
+                      });
+                    }
+                    const hasUnresolved = visibleItems.some(
+                      ({ item, index }) =>
+                        !readinessOverrides.has(index) &&
+                        (item.status === "misaligned" || item.status === "missing")
+                    );
+                    const effectiveResult = hasUnresolved ? "needs-review" : "looks-good";
 
                     return (
                     <div>
