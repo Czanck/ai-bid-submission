@@ -11,6 +11,8 @@ interface AskAiPanelProps {
   isStreaming: boolean;
   statusText: string | null;
   sendChat: (message: string) => void;
+  initialMessage?: string | null;
+  onInitialMessageConsumed?: () => void;
 }
 
 const SUGGESTED_PROMPTS = [
@@ -21,7 +23,16 @@ const SUGGESTED_PROMPTS = [
   "What special instructions or compliance requirements exist?",
 ];
 
-export function AskAiPanel({ open, onClose, messages, isStreaming, statusText, sendChat }: AskAiPanelProps) {
+export function AskAiPanel({
+  open,
+  onClose,
+  messages,
+  isStreaming,
+  statusText,
+  sendChat,
+  initialMessage,
+  onInitialMessageConsumed,
+}: AskAiPanelProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -35,6 +46,15 @@ export function AskAiPanel({ open, onClose, messages, isStreaming, statusText, s
       setTimeout(() => inputRef.current?.focus(), 300);
     }
   }, [open]);
+
+  // Auto-send initial message when panel opens with one queued
+  useEffect(() => {
+    if (open && initialMessage && messages.length === 0) {
+      sendChat(initialMessage);
+      onInitialMessageConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialMessage]);
 
   const handleSend = (text: string) => {
     if (!text.trim() || isStreaming) return;

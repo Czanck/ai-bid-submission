@@ -104,6 +104,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [bidSubmitted, setBidSubmitted] = useState(false);
   const [askAiOpen, setAskAiOpen] = useState(false);
+  const [askAiInitialMessage, setAskAiInitialMessage] = useState<string | null>(null);
   const [openFileTabs, setOpenFileTabs] = useState<{ id: string; name: string; trade: string; detail: string }[]>([]);
   const fileTabCounter = useRef(0);
   const bidFooterRef = useRef<HTMLDivElement>(null);
@@ -331,6 +332,8 @@ export default function Home() {
           isStreaming={planiq.isStreaming}
           statusText={planiq.statusText}
           sendChat={planiq.sendChat}
+          initialMessage={askAiInitialMessage}
+          onInitialMessageConsumed={() => setAskAiInitialMessage(null)}
         />
       ) : undefined}
       onNavClick={handleNavClick}
@@ -477,6 +480,10 @@ export default function Home() {
             mode="page"
             footerPortalRef={bidFooterRef}
             onOpenSource={handleOpenSource}
+            onOpenAskAi={(message) => {
+              setAskAiInitialMessage(message);
+              setAskAiOpen(true);
+            }}
             onSubmitComplete={() => {
               setBidSubmitted(true);
               setActiveTab("track-bid");
@@ -811,7 +818,9 @@ export default function Home() {
             )}
           </div>
         </div>
-      ) : null}
+      ) : (
+        <div className="p-6 bg-[var(--bg-surface,#F5F7F9)] h-full" />
+      )}
 
       <BidSubmissionModal
         open={modalOpen}
@@ -821,6 +830,10 @@ export default function Home() {
         gcEmail={displayGcList[0]?.email || "bids@contractor.com"}
         projectId={activeProject}
         projectContext={undefined}
+        onOpenAskAi={(message) => {
+          setAskAiInitialMessage(message);
+          setAskAiOpen(true);
+        }}
       />
 
       </>
