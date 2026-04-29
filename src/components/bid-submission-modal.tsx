@@ -1171,7 +1171,7 @@ export function BidSubmissionModal({
                       {/* Header */}
                       <div className="flex items-center justify-between mb-1.5">
                         <Label className="text-base font-semibold">Bid Review</Label>
-                        {isLoading || isReadinessChecking ? (
+                        {isLoading || isChecklistLoading || isReadinessChecking ? (
                           <div className="h-6 w-24 rounded-full bg-purple-100 animate-pulse" />
                         ) : hasReadiness ? (
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
@@ -1220,7 +1220,7 @@ export function BidSubmissionModal({
                                 exit={{ height: 0, opacity: 0, overflow: "hidden" }}
                                 transition={{ duration: 0.2 }}
                               >
-                                {isLoading || isReadinessChecking ? (
+                                {isLoading || isChecklistLoading || isReadinessChecking ? (
                                   <div className="px-4 pb-3 space-y-2">
                                     {[0, 1, 2].map((i) => (
                                       <div key={i} className="h-14 rounded-lg bg-purple-100 animate-pulse" />
