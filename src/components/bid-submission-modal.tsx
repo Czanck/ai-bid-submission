@@ -152,6 +152,138 @@ function buildContextChips(trade: string, status: "aligned" | "misaligned" | "mi
   ];
 }
 
+// Background analysis pipeline — kicks off as soon as files are attached so
+// that by the time the user clicks "Analyze Documents with AI" the requests
+// are already in flight (or finished).
+type AnalysisPipeline = {
+  key: string;
+  abort: AbortController;
+  fast: Promise<{ bidAmount: string; messageBody: string } | null>;
+  full: Promise<AnalyzeBidResponse>;
+  readiness?: Promise<BidReadinessCheck | null>;
+  bidScore?: Promise<BidReadinessScore | null>;
+  readinessCheckEnabled: boolean;
+  status: { fast: boolean; full: boolean; readiness: boolean; bidScore: boolean };
+};
+
+function makePipelineKey(
+  files: UploadedFile[],
+  projectId: string,
+  projectContext: string | undefined
+): string {
+  if (files.length === 0) return "";
+  return `${files.map((f) => f.id).sort().join(",")}|${projectId}|${projectContext ?? ""}`;
+}
+
+function buildAnalysisPipeline(
+  files: UploadedFile[],
+  projectId: string,
+  projectContext: string | undefined,
+  key: string
+): AnalysisPipeline {
+  const abort = new AbortController();
+  const status = { fast: false, full: false, readiness: false, bidScore: false };
+
+  const buildFormData = (extra?: Record<string, string>) => {
+    const fd = new FormData();
+    files.forEach((f) => fd.append("files", f.file));
+    fd.append("projectId", projectId);
+    if (projectContext) fd.append("projectContext", projectContext);
+    if (extra) Object.entries(extra).forEach(([k, v]) => fd.set(k, v));
+    return fd;
+  };
+
+  const fast = fetch("/api/analyze-bid", {
+    method: "POST",
+    body: buildFormData({ fast: "true" }),
+    signal: abort.signal,
+  })
+    .then(async (r) => {
+      if (!r.ok) return null;
+      const data = JSON.parse(await r.text()) as AnalyzeBidResponse;
+      return { bidAmount: data.extractedData.bidAmount, messageBody: data.messageTemplate };
+    })
+    .catch(() => null)
+    .finally(() => {
+      status.fast = true;
+    });
+
+  const full = fetch("/api/analyze-bid", {
+    method: "POST",
+    body: buildFormData(),
+    signal: abort.signal,
+  }).then(async (r) => {
+    const text = await r.text();
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(
+        r.status === 504
+          ? "Analysis timed out. Try uploading a smaller file."
+          : `Server error (${r.status}). Please try again.`
+      );
+    }
+    if (!r.ok) throw new Error((data.error as string) || `Analysis failed (${r.status})`);
+    return data as unknown as AnalyzeBidResponse;
+  });
+  // Track full's resolution without consuming it; suppress unhandled rejection.
+  full.then(
+    () => {
+      status.full = true;
+    },
+    () => {
+      status.full = true;
+    }
+  );
+
+  const readinessCheckEnabled =
+    getFlag("bid-readiness-check") || getFlag("bid-readiness-check-plus");
+
+  const pipeline: AnalysisPipeline = {
+    key,
+    abort,
+    fast,
+    full,
+    readinessCheckEnabled,
+    status,
+  };
+
+  if (readinessCheckEnabled) {
+    pipeline.readiness = full
+      .then(() =>
+        fetch("/api/readiness-check", {
+          method: "POST",
+          body: buildFormData(),
+          signal: abort.signal,
+        })
+      )
+      .then((r) => r.json() as Promise<BidReadinessCheck>)
+      .then((data) => (data.result ? data : null))
+      .catch(() => null)
+      .finally(() => {
+        status.readiness = true;
+      });
+  } else {
+    pipeline.bidScore = full
+      .then(() =>
+        fetch("/api/improve-bid", {
+          method: "POST",
+          body: buildFormData(),
+          signal: abort.signal,
+        })
+      )
+      .then((r) => r.json() as Promise<BidReadinessScore>)
+      .then((data) => (data.score !== undefined ? data : null))
+      .catch(() => null)
+      .finally(() => {
+        status.bidScore = true;
+      });
+  }
+
+  return pipeline;
+}
+
 export function BidSubmissionModal({
   open,
   onOpenChange,
@@ -242,6 +374,18 @@ export function BidSubmissionModal({
   const [showEnvelopeAnimation, setShowEnvelopeAnimation] = useState(false);
   const [modalRect, setModalRect] = useState<DOMRect | null>(null);
   const [showBidToast, setShowBidToast] = useState(false);
+
+  // Background analysis pipeline — kicked off as soon as files land so the
+  // network round-trips overlap with the user's review of the upload UI.
+  const pipelineRef = useRef<AnalysisPipeline | null>(null);
+  useEffect(() => {
+    const key = makePipelineKey(files, projectId, projectContext);
+    if (pipelineRef.current?.key === key) return;
+    if (pipelineRef.current) pipelineRef.current.abort.abort();
+    pipelineRef.current = key
+      ? buildAnalysisPipeline(files, projectId, projectContext, key)
+      : null;
+  }, [files, projectId, projectContext]);
 
   // Cycle processing messages
   useEffect(() => {
@@ -371,127 +515,68 @@ export function BidSubmissionModal({
   const handleAnalyze = useCallback(async () => {
     if (files.length === 0) return;
 
-    setIsAnalyzing(true);
-    setIsChecklistLoading(true);
     setStep("review");
     setError(null);
 
-    // planiqContext is populated during Phase 1 and used in Phase 2 onwards
-    let planiqContext = "";
+    // Reuse the prefetched pipeline if it matches the current files; otherwise
+    // build one synchronously (covers the rare race where useEffect hasn't run).
+    const key = makePipelineKey(files, projectId, projectContext);
+    if (!pipelineRef.current || pipelineRef.current.key !== key) {
+      if (pipelineRef.current) pipelineRef.current.abort.abort();
+      pipelineRef.current = buildAnalysisPipeline(files, projectId, projectContext, key);
+    }
+    const pipeline = pipelineRef.current;
 
-    const buildFormData = (extra?: Record<string, string>) => {
-      const fd = new FormData();
-      files.forEach((f) => fd.append("files", f.file));
-      fd.append("projectId", projectId);
-      const ctx = planiqContext || projectContext;
-      if (ctx) fd.append("projectContext", ctx);
-      if (extra) Object.entries(extra).forEach(([k, v]) => fd.set(k, v));
-      return fd;
-    };
+    // Only show skeletons for phases that haven't already resolved during prefetch.
+    if (!pipeline.status.fast) setIsAnalyzing(true);
+    if (!pipeline.status.full) setIsChecklistLoading(true);
 
     try {
       let fastSucceeded = false;
 
-      // Phase 1: fast extraction — no doc-intel, populates bid amount + message immediately
-      const fastPromise = fetch("/api/analyze-bid", { method: "POST", body: buildFormData({ fast: "true" }) })
-        .then(async (r) => {
-          if (!r.ok) return null;
-          const text = await r.text();
-          return JSON.parse(text) as AnalyzeBidResponse;
-        })
-        .then((data) => {
-          if (data) {
-            setBidAmount(data.extractedData.bidAmount);
-            setMessageBody(data.messageTemplate);
-            fastSucceeded = true;
-          }
-          setIsAnalyzing(false);
-        })
-        .catch(() => {
-          setIsAnalyzing(false);
-        });
+      // Phase 1: fast extraction
+      const fastData = await pipeline.fast;
+      if (fastData) {
+        setBidAmount(fastData.bidAmount);
+        setMessageBody(fastData.messageBody);
+        fastSucceeded = true;
+      }
+      setIsAnalyzing(false);
 
-      // PlanIQ context fetch temporarily disabled — API routes fall back to doc-intel.
-      // const contextFetchPromise = fetchContextViaPlanIQ(
-      //   `For project ${projectId}, what are the project specifications, scope of work, ` +
-      //   `required trades, bidding requirements, certifications, insurance, and bonding requirements?`,
-      //   projectId,
-      // )
-      //   .then((ctx) => { planiqContext = ctx; })
-      //   .catch(() => { /* fallback: API routes will call doc-intel themselves */ });
-      const contextFetchPromise = Promise.resolve();
-
-      // Wait for both fast extraction and context fetch before starting full analysis
-      await Promise.all([fastPromise, contextFetchPromise]);
-
-      // Phase 2: full analysis — uses PlanIQ context (or doc-intel fallback), populates checklist + all extracted fields
-      const fullPromise = fetch("/api/analyze-bid", { method: "POST", body: buildFormData() })
-        .then(async (r) => {
-          const text = await r.text();
-          let data: Record<string, unknown>;
-          try {
-            data = JSON.parse(text);
-          } catch {
-            throw new Error(
-              r.status === 504
-                ? "Analysis timed out. Try uploading a smaller file."
-                : `Server error (${r.status}). Please try again.`
-            );
-          }
-          if (!r.ok) throw new Error((data.error as string) || `Analysis failed (${r.status})`);
-          return data as unknown as AnalyzeBidResponse;
-        })
-        .then((result) => {
-          setAnalysisResult(result);
-          // Fill in bidAmount/message only if fast call didn't get them
-          if (!fastSucceeded) {
-            setBidAmount(result.extractedData.bidAmount);
-            setMessageBody(result.messageTemplate);
-          }
-          setIsAnalyzing(false); // safety fallback if fast call failed
-          const hasUnmet = result.checklist.some((c) => c.status === "needs-action" || c.status === "missing");
-          setRequirementsExpanded(hasUnmet);
-        });
-
-      // Wait for full analysis before kicking off readiness/improve-bid
-      await fullPromise;
+      // Phase 2: full analysis
+      const result = await pipeline.full;
+      setAnalysisResult(result);
+      if (!fastSucceeded) {
+        setBidAmount(result.extractedData.bidAmount);
+        setMessageBody(result.messageTemplate);
+      }
+      const hasUnmet = result.checklist.some(
+        (c) => c.status === "needs-action" || c.status === "missing"
+      );
+      setRequirementsExpanded(hasUnmet);
       setIsChecklistLoading(false);
 
-      // Auto-trigger bid analysis after document extraction completes
-      const readinessCheckEnabled = getFlag("bid-readiness-check") || getFlag("bid-readiness-check-plus");
-
-      if (readinessCheckEnabled) {
-        // Feature-flagged: Bid Review (scope alignment)
-        setIsReadinessChecking(true);
-        setReadinessCheck(null);
-        setReadinessExpanded(null);
-        try {
-          const checkRes = await fetch("/api/readiness-check", { method: "POST", body: buildFormData() });
-          const checkData = await checkRes.json() as BidReadinessCheck;
-          if (checkData.result) {
-            setReadinessCheck(checkData);
-            setReadinessExpanded(checkData.result === "needs-review");
-          }
-        } catch {
-          // Check failed silently — not critical to submission
-        } finally {
-          setIsReadinessChecking(false);
+      // Phase 3: readiness check (or bid score, depending on flag)
+      if (pipeline.readinessCheckEnabled) {
+        if (!pipeline.status.readiness) {
+          setIsReadinessChecking(true);
+          setReadinessCheck(null);
+          setReadinessExpanded(null);
         }
+        const checkData = await pipeline.readiness!;
+        if (checkData) {
+          setReadinessCheck(checkData);
+          setReadinessExpanded(checkData.result === "needs-review");
+        }
+        setIsReadinessChecking(false);
       } else {
-        // Default: Bid Readiness Score (original)
-        setIsImprovingBid(true);
-        setBidScore(null);
-        try {
-          const improveRes = await fetch("/api/improve-bid", { method: "POST", body: buildFormData() });
-          const improveData = await improveRes.json() as BidReadinessScore;
-          if (improveData.score !== undefined) {
-            setBidScore(improveData);
-          }
-        } catch {
-          // Score failed silently — not critical to submission
-        } finally {
-          setIsImprovingBid(false);
+        if (!pipeline.status.bidScore) {
+          setIsImprovingBid(true);
+          setBidScore(null);
         }
+        const scoreData = await pipeline.bidScore!;
+        if (scoreData) setBidScore(scoreData);
+        setIsImprovingBid(false);
       }
     } catch (err) {
       setError(
